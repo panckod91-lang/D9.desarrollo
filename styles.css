@@ -2042,3 +2042,13 @@ button.home-red-d9:active {
   gap: 10px;
   padding-top: 14px;
 }
+
+/* Ocultar selector de listas */
+#priceListSelector,
+#priceList,
+.price-list-selector,
+.price-list-switch,
+[data-price-list],
+.list-selector-d9 {
+  display: none !important;
+}
