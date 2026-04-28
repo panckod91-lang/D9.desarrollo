@@ -2149,5 +2149,17 @@ async function init() {
     renderNetwork();
   }
 }
+document.addEventListener("click", (e) => {
 
+  // Botón EDITAR
+  if (e.target.id === "btnCancelOrderConfirm") {
+    closeOrderConfirmModal();
+  }
+
+  // Botón CONFIRMAR
+  if (e.target.id === "btnConfirmOrderSend") {
+    confirmOrderAndSend();
+  }
+
+});
 init();
