@@ -1082,20 +1082,11 @@ function renderOrderPriceListControls() {
   const info = $("#orderPriceListInfo");
   if (!box || !select || !info) return;
 
-  if (state.seller?.rol === "vendedor") {
-    box.classList.remove("hidden");
-    select.value = state.activePriceList || "lista_1";
-    const clientName = state.selectedClient?.nombre_real || state.selectedClient?.nombre || "sin cliente";
-    const defaultList = state.selectedClient?.lista_precio || "lista_1";
-    const currentList = state.activePriceList || defaultList;
-    const override = !!state.selectedClient && currentList !== defaultList;
-    info.textContent = override
-      ? `Lista cambiada para ${clientName}: ${priceLabel(currentList)} (por defecto ${priceLabel(defaultList)}).`
-      : `Precio activo para ${clientName}: ${priceLabel(currentList)}.`;
-  } else {
-    box.classList.add("hidden");
-    info.textContent = "";
-  }
+  // D9 usa una sola lista visible: ocultamos UI y mantenemos lista_1 internamente.
+  state.activePriceList = "lista_1";
+  select.value = "lista_1";
+  box.classList.add("hidden");
+  info.textContent = "";
 }
 
 function openOccasionalClientModal() {
@@ -1162,22 +1153,11 @@ function renderPriceListControls() {
   const select = $("#priceListSelect");
   if (!modeBox || !info || !select) return;
 
-  if (!state.seller) {
-    state.activePriceList = "lista_1";
-    modeBox.classList.add("hidden");
-    info.textContent = "Consulta general de precios.";
-    renderPriceCategoryChips();
-    return;
-  }
-
-  if (state.seller.rol === "vendedor") {
-    modeBox.classList.remove("hidden");
-    select.value = getActivePriceList();
-    info.textContent = `Estás viendo ${priceLabel(getActivePriceList())}.`;
-  } else {
-    modeBox.classList.add("hidden");
-    info.textContent = "Estás viendo tus precios asignados.";
-  }
+  // D9 usa una sola lista visible: ocultamos UI y mantenemos lista_1 internamente.
+  state.activePriceList = "lista_1";
+  select.value = "lista_1";
+  modeBox.classList.add("hidden");
+  info.textContent = "Consulta general de precios.";
 
   renderPriceCategoryChips();
 }

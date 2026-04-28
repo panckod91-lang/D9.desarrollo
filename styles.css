@@ -2043,12 +2043,9 @@ button.home-red-d9:active {
   padding-top: 14px;
 }
 
-/* Ocultar selector de listas */
-#priceListSelector,
-#priceList,
-.price-list-selector,
-.price-list-switch,
-[data-price-list],
-.list-selector-d9 {
+
+/* D9: ocultar selector visual de listas, motor interno sigue en lista_1 */
+#orderPriceListBox,
+#priceListModeBox {
   display: none !important;
 }
