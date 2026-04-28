@@ -1833,6 +1833,82 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2200);
 }
 
+
+function openOrderConfirmModal() {
+  if (validateOrder() !== true) return;
+
+  const modal = $("#orderConfirmModal");
+  const box = $("#orderConfirmContent");
+  const confirmBtn = $("#btnConfirmOrderSend");
+  if (!modal || !box || !confirmBtn) {
+    sendOrder();
+    return;
+  }
+
+  const payload = buildOrderPayload();
+  const cliente = payload.cliente || {};
+  const clienteNombre = cliente.nombre_real || cliente.nombre || "Cliente";
+  const clienteExtra = [cliente.telefono || "", cliente.direccion || cliente.ciudad || ""].filter(Boolean).join(" · ");
+  const lista = priceLabel(getActivePriceList());
+  const itemsCount = payload.carrito.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+
+  const productosHtml = payload.carrito.map(item => `
+    <div class="confirm-product-row-d9">
+      <div>
+        <strong>${esc(item.nombre)}</strong>
+        <span>x${Number(item.cantidad || 0)}</span>
+      </div>
+      <b>${money(Number(item.precio || 0) * Number(item.cantidad || 0))}</b>
+    </div>
+  `).join("");
+
+  box.innerHTML = `
+    <div class="confirm-info-grid-d9">
+      <div class="confirm-info-card-d9 wide">
+        <span>Cliente</span>
+        <strong>${esc(clienteNombre)}</strong>
+        ${clienteExtra ? `<small>${esc(clienteExtra)}</small>` : ""}
+      </div>
+      <div class="confirm-info-card-d9">
+        <span>Lista</span>
+        <strong>${esc(lista)}</strong>
+      </div>
+      <div class="confirm-info-card-d9">
+        <span>Items</span>
+        <strong>${itemsCount}</strong>
+      </div>
+      <div class="confirm-info-card-d9">
+        <span>Total</span>
+        <strong>${money(payload.total)}</strong>
+      </div>
+    </div>
+
+    <div class="confirm-section-title-d9">Productos</div>
+    <div class="confirm-products-d9">${productosHtml}</div>
+  `;
+
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = "Confirmar y enviar";
+  openModal("orderConfirm");
+}
+
+function closeOrderConfirmModal() {
+  closeModal("orderConfirm");
+}
+
+function confirmOrderAndSend() {
+  const confirmBtn = $("#btnConfirmOrderSend");
+  if (state.isSending || confirmBtn?.disabled) return;
+
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Enviando...";
+  }
+
+  closeOrderConfirmModal();
+  sendOrder();
+}
+
 function bind() {
   $("#btnGoOrder").addEventListener("click", () => showView("order"));
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
@@ -1866,7 +1942,9 @@ function bind() {
     if (state.cart.length) toast(`Se aplicó ${priceLabel(next)} al pedido.`);
   });
   $("#btnClearCart").addEventListener("click", clearCart);
-  $("#btnSend").addEventListener("click", sendOrder);
+  $("#btnSend").addEventListener("click", openOrderConfirmModal);
+  $("#btnCancelOrderConfirm")?.addEventListener("click", closeOrderConfirmModal);
+  $("#btnConfirmOrderSend")?.addEventListener("click", confirmOrderAndSend);
   $("#btnSavePending").addEventListener("click", savePendingNow);
   $("#btnExportHistory").addEventListener("click", exportHistory);
   $("#btnRestoreHistory")?.addEventListener("click", openRestoreHistory);
@@ -2073,37 +2151,3 @@ async function init() {
 }
 
 init();
-
-// --- Confirmación de pedido ---
-document.addEventListener('click', function(e){
-  if(e.target && e.target.id === 'btnSendOrder'){
-    e.preventDefault();
-    openConfirmModal();
-  }
-});
-
-function openConfirmModal(){
-  const modal = document.getElementById('confirmModal');
-  const content = document.getElementById('confirmContent');
-
-  const items = (state.cart||[]).map(p => `${p.nombre} x${p.cantidad}`).join('<br>');
-  const total = (state.cart||[]).reduce((s,p)=>s+(p.cantidad*p.precio),0);
-
-  content.innerHTML = `
-    <p><b>Cliente:</b> ${state.selectedClient?.nombre || 'Invitado'}</p>
-    <p>${items}</p>
-    <p><b>Total:</b> ${total}</p>
-  `;
-
-  modal.style.display='block';
-}
-
-document.addEventListener('click', function(e){
-  if(e.target && e.target.id === 'confirmCancel'){
-    document.getElementById('confirmModal').style.display='none';
-  }
-  if(e.target && e.target.id === 'confirmSend'){
-    document.getElementById('confirmModal').style.display='none';
-    sendOrder();
-  }
-});

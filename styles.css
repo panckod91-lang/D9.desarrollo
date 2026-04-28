@@ -1935,3 +1935,110 @@ button.home-red-d9:active {
 .slider-dots {
   display: none !important;
 }
+
+
+/* D9 Confirmación de pedido */
+.order-confirm-panel-d9 {
+  border-radius: 28px !important;
+  overflow: hidden !important;
+}
+
+.order-confirm-content-d9 {
+  display: grid;
+  gap: 12px;
+  max-height: 58vh;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+.confirm-info-grid-d9 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.confirm-info-card-d9 {
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 16px;
+  background: #f6fbff;
+  border: 1px solid rgba(18,36,63,.08);
+}
+
+.confirm-info-card-d9.wide {
+  grid-column: 1 / -1;
+}
+
+.confirm-info-card-d9 span {
+  display: block;
+  color: #708095;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+
+.confirm-info-card-d9 strong {
+  display: block;
+  color: #12243f;
+  font-size: 15px;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.confirm-info-card-d9 small {
+  display: block;
+  margin-top: 4px;
+  color: #78879a;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.confirm-section-title-d9 {
+  margin-top: 4px;
+  color: #12243f;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.confirm-products-d9 {
+  display: grid;
+  gap: 8px;
+}
+
+.confirm-product-row-d9 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(18,36,63,.1);
+}
+
+.confirm-product-row-d9 strong,
+.confirm-product-row-d9 span {
+  display: block;
+}
+
+.confirm-product-row-d9 span {
+  margin-top: 3px;
+  color: #65748a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.confirm-product-row-d9 b {
+  color: #167dae;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.confirm-actions-d9 {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 10px;
+  padding-top: 14px;
+}
