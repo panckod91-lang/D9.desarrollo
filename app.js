@@ -2073,3 +2073,37 @@ async function init() {
 }
 
 init();
+
+// --- Confirmación de pedido ---
+document.addEventListener('click', function(e){
+  if(e.target && e.target.id === 'btnSendOrder'){
+    e.preventDefault();
+    openConfirmModal();
+  }
+});
+
+function openConfirmModal(){
+  const modal = document.getElementById('confirmModal');
+  const content = document.getElementById('confirmContent');
+
+  const items = (state.cart||[]).map(p => `${p.nombre} x${p.cantidad}`).join('<br>');
+  const total = (state.cart||[]).reduce((s,p)=>s+(p.cantidad*p.precio),0);
+
+  content.innerHTML = `
+    <p><b>Cliente:</b> ${state.selectedClient?.nombre || 'Invitado'}</p>
+    <p>${items}</p>
+    <p><b>Total:</b> ${total}</p>
+  `;
+
+  modal.style.display='block';
+}
+
+document.addEventListener('click', function(e){
+  if(e.target && e.target.id === 'confirmCancel'){
+    document.getElementById('confirmModal').style.display='none';
+  }
+  if(e.target && e.target.id === 'confirmSend'){
+    document.getElementById('confirmModal').style.display='none';
+    sendOrder();
+  }
+});
