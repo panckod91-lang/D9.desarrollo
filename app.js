@@ -423,60 +423,86 @@ function injectInlineQtyStylesD9() {
   const style = document.createElement("style");
   style.id = "d9-inline-qty-style";
   style.textContent = `
-    #productModal .product-side{
-      align-self:stretch !important;
-      display:flex !important;
-      flex-direction:column !important;
-      justify-content:flex-start !important;
-      align-items:flex-end !important;
-      gap:6px !important;
-      padding-top:2px !important;
-    }
-    #productModal .product-price{
-      line-height:1.05 !important;
-      margin-top:0 !important;
-    }
-    .qty-inline-d9{
-      display:flex !important;
-      align-items:center !important;
-      justify-content:flex-end !important;
-      gap:6px !important;
-      font-size:13px !important;
-      color:#6f8294 !important;
-      white-space:nowrap !important;
-      user-select:none !important;
-    }
-    .qty-inline-d9 span{
-      font-weight:700 !important;
-      opacity:.86 !important;
-    }
-    .qty-inline-d9 strong{
-      min-width:18px !important;
-      text-align:center !important;
-      font-size:15px !important;
-      color:#173454 !important;
-      font-weight:950 !important;
-    }
-    .qty-inline-btn-d9{
-      width:28px !important;
-      height:28px !important;
-      min-width:28px !important;
-      border-radius:999px !important;
-      border:1px solid rgba(36,137,190,.25) !important;
-      background:#ffffff !important;
-      color:#173454 !important;
-      font-size:20px !important;
-      font-weight:900 !important;
-      line-height:1 !important;
-      display:grid !important;
-      place-items:center !important;
-      padding:0 !important;
-      box-shadow:0 2px 7px rgba(21,91,145,.10) !important;
-    }
-    .qty-inline-btn-d9:active{
-      transform:scale(.94) !important;
-    }
-  `;
+
+/* === D9 cantidad inline fix v10: controles dentro de tarjeta === */
+#productModal .product-picker{
+  overflow:hidden !important;
+}
+
+#productModal .product-side{
+  min-width:112px !important;
+  max-width:128px !important;
+  align-self:center !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:center !important;
+  align-items:flex-end !important;
+  gap:7px !important;
+  padding-top:0 !important;
+}
+
+#productModal .product-side .product-price{
+  width:100% !important;
+  text-align:right !important;
+  white-space:nowrap !important;
+}
+
+#productModal .qty-inline-d9{
+  width:100% !important;
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:5px !important;
+  font-size:12px !important;
+  color:#6f8294 !important;
+  white-space:nowrap !important;
+  user-select:none !important;
+  margin:0 !important;
+  padding:0 !important;
+  position:static !important;
+}
+
+#productModal .qty-inline-d9 span:first-child{
+  font-weight:800 !important;
+  opacity:.86 !important;
+}
+
+#productModal .qty-inline-d9 strong{
+  min-width:18px !important;
+  text-align:center !important;
+  font-size:15px !important;
+  color:#173454 !important;
+  font-weight:950 !important;
+  line-height:1 !important;
+}
+
+#productModal .qty-inline-btn-d9{
+  width:26px !important;
+  height:26px !important;
+  min-width:26px !important;
+  max-width:26px !important;
+  border-radius:999px !important;
+  border:1px solid rgba(36,137,190,.25) !important;
+  background:#ffffff !important;
+  color:#173454 !important;
+  font-size:19px !important;
+  font-weight:950 !important;
+  line-height:24px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:0 !important;
+  margin:0 !important;
+  box-shadow:0 2px 7px rgba(21,91,145,.10) !important;
+  position:static !important;
+  transform:none !important;
+}
+
+#productModal .qty-inline-btn-d9:active{
+  transform:scale(.94) !important;
+}
+`;
   document.head.appendChild(style);
 }
 
@@ -1640,9 +1666,9 @@ function renderProducts() {
             ${selected ? `
               <div class="qty-inline-d9" data-no-toggle="true">
                 <span>Cant:</span>
-                <button class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" type="button">−</button>
+                <span class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" role="button" tabindex="0">−</span>
                 <strong>${state.cart.find(x => x.id === p.id)?.cantidad || 1}</strong>
-                <button class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" type="button">+</button>
+                <span class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" role="button" tabindex="0">+</span>
               </div>
             ` : `<div class="pick-state">Tocar para agregar</div>`}
           </div>
@@ -2274,6 +2300,23 @@ function confirmOrderAndSend() {
 }
 
 function bind() {
+
+  document.addEventListener("keydown", (e) => {
+    const qtyBtn = e.target.closest("[data-product-qty]");
+    if (!qtyBtn) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = qtyBtn.dataset.id;
+    const action = qtyBtn.dataset.productQty;
+    if (!id) return;
+
+    if (action === "plus") updateQty(id, 1);
+    if (action === "minus") updateQty(id, -1);
+  }); // data-product-qty-keyboard-d9
+
   document.addEventListener("click", (e) => {
     const qtyBtn = e.target.closest("[data-product-qty]");
     if (!qtyBtn) return;
