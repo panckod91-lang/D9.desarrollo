@@ -217,10 +217,24 @@ function injectCategoryChipStylesD9() {
   const style = document.createElement("style");
   style.id = "d9-category-chip-style";
   style.textContent = `
+    #productModal .modal-card,
+    #productModal .modal-content,
+    #productModal .modal-box{
+      max-height:96vh !important;
+      min-height:88vh !important;
+      margin-top:2vh !important;
+      margin-bottom:2vh !important;
+    }
+    #productModal .modal-body,
+    #productModal .modal-scroll,
+    #productModal .option-list,
+    #productList{
+      max-height:none;
+    }
     .modal-category-box-d9{
       display:grid;
-      gap:8px;
-      margin:4px 0 12px;
+      gap:6px;
+      margin:2px 0 10px;
     }
     .modal-category-current-d9{
       display:flex;
@@ -248,14 +262,16 @@ function injectCategoryChipStylesD9() {
     }
     .modal-category-button-d9{
       width:100%;
-      min-height:52px;
+      min-height:42px !important;
+      height:42px;
       justify-content:flex-start;
       text-align:left;
-      border-radius:18px;
+      border-radius:15px !important;
+      padding:8px 12px !important;
     }
     .modal-category-button-d9 .picker-label{
       opacity:.72;
-      font-size:12px;
+      font-size:11px;
       font-weight:800;
       text-transform:uppercase;
       letter-spacing:.035em;
@@ -263,14 +279,11 @@ function injectCategoryChipStylesD9() {
     }
     .modal-category-button-d9 strong{
       flex:1;
-      font-size:16px;
+      font-size:15px;
       font-weight:900;
     }
     .modal-category-button-d9 .picker-arrow{
-      margin-left:auto;
-      font-size:24px;
-      line-height:1;
-      opacity:.65;
+      display:none !important;
     }
     .modal.front-modal-d9{
       z-index:99999 !important;
@@ -1059,7 +1072,7 @@ function renderQuickLabels() {
     : (state.selectedClient
         ? (state.selectedClient.ocasional ? (state.selectedClient.nombre_real || "Cliente nuevo / ocasional") : state.selectedClient.nombre)
         : (guestMode ? "Cliente nuevo / ocasional" : "Seleccionar cliente"));
-  $("#selectedCategoryLabel").textContent = state.selectedCategory || "Todas las categorías";
+  $("#selectedCategoryLabel").textContent = state.selectedCategory ? cleanCategory(state.selectedCategory) : "Todas las categorías";
   $("#selectedProductsLabel").textContent = state.cart.length ? `${state.cart.length} productos seleccionados` : "Seleccionar productos";
   const clientBtn = $("#btnOpenClients");
   if (clientBtn) {
@@ -1083,7 +1096,7 @@ function renderQuickLabels() {
   if (clientSearch && isClient) clientSearch.value = "";
   const productHint = $("#productModalHint");
   if (productHint) {
-    const catLabel = state.selectedCategory || "Todas las categorías";
+    const catLabel = state.selectedCategory ? cleanCategory(state.selectedCategory) : "Todas las categorías";
     productHint.innerHTML = `
       <div class="modal-category-box-d9">
         <div class="modal-category-current-d9">
@@ -1093,7 +1106,6 @@ function renderQuickLabels() {
         <button id="btnCategoryInsideProductModal" class="picker-btn modal-category-button-d9" type="button">
           <span class="picker-label">Categoría</span>
           <strong>Seleccionar categoría</strong>
-          <span class="picker-arrow">›</span>
         </button>
       </div>
     `;
@@ -1283,7 +1295,7 @@ function renderPriceListControls() {
 function renderPriceCategoryChips() {
   const wrap = $("#priceCategoryWrap");
   if (!wrap) return;
-  const label = state.priceCategory || "Todas las categorías";
+  const label = state.priceCategory ? cleanCategory(state.priceCategory) : "Todas las categorías";
   wrap.innerHTML = `
     <button id="btnOpenPriceCategories" class="picker-btn compact-picker" type="button">
       <span class="picker-label-inline">Categoría</span>
@@ -1396,7 +1408,7 @@ function renderCategories() {
     </button>`;
   list.innerHTML = allItem + cats.map(c => `
     <button class="option-item option-button ${state.selectedCategory === c ? "is-selected" : ""}" data-category="${esc(c)}" type="button">
-      <strong>${esc(c)}</strong>
+      <strong>${esc(cleanCategory(c))}</strong>
     </button>`).join("");
 }
 
