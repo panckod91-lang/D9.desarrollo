@@ -1,10 +1,11 @@
+const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
+
 const SHEET_ID = "1wHdgm_V0mloLaIsVPIIqbmTYBomx8DIUmXEplClCMz8";
 const WEBHOOK_ENDPOINTS = [
   "https://wild-pond-6b36.pancko-d9.workers.dev",
   // "/.netlify/functions/order" // ✋ backup Netlify (desactivado)
 ];
 const OPEN_SHEET = (sheet) => `https://opensheet.elk.sh/${SHEET_ID}/${encodeURIComponent(sheet)}`;
-const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -289,8 +290,6 @@ async function loadAllData() {
   const data = await r.json();
   if (!data.ok) throw new Error("Bootstrap retornó ok:false");
 
-  // La API de Apps Script devuelve config y soporte como objetos,
-  // y productos/clientes/usuarios/publicidad como arrays.
   const confi    = data.config || {};
   const support  = data.soporte || {};
   const sellers  = Array.isArray(data.usuarios)   ? data.usuarios   : [];
@@ -333,9 +332,8 @@ async function loadAllData() {
   }));
 
   state.ads = ads.filter(isActiveAd);
-
-  console.info(`[D9] Bootstrap Apps Script OK · productos=${state.products.length} clientes=${state.clients.length} publicidad=${state.ads.length}`);
 }
+
 function showView(name, pushHistory = true) {
   state.currentView = name;
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
