@@ -92,3 +92,5 @@ self.addEventListener("fetch", event => {
 
   event.respondWith(cacheFirst(event.request));
 });
+
+// bootstrap_publicidad_listo
