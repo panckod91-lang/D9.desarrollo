@@ -4,7 +4,7 @@ const WEBHOOK_ENDPOINTS = [
   // "/.netlify/functions/order" // ✋ backup Netlify (desactivado)
 ];
 const OPEN_SHEET = (sheet) => `https://opensheet.elk.sh/${SHEET_ID}/${encodeURIComponent(sheet)}`;
-const BOOTSTRAP_URL = "https://script.google.com/macros/s/TU_SCRIPT_ID/exec?action=bootstrap";
+const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -285,17 +285,22 @@ async function fetchSheet(name) {
 async function loadAllData() {
   const r = await fetch(BOOTSTRAP_URL, { cache: "no-store" });
   if (!r.ok) throw new Error(`Bootstrap falló: ${r.status}`);
+
   const data = await r.json();
   if (!data.ok) throw new Error("Bootstrap retornó ok:false");
 
-  const confi    = Array.isArray(data.config)     ? data.config     : [];
+  // La API de Apps Script devuelve config y soporte como objetos,
+  // y productos/clientes/usuarios/publicidad como arrays.
+  const confi    = data.config || {};
+  const support  = data.soporte || {};
   const sellers  = Array.isArray(data.usuarios)   ? data.usuarios   : [];
   const clients  = Array.isArray(data.clientes)   ? data.clientes   : [];
   const products = Array.isArray(data.productos)  ? data.productos  : [];
   const ads      = Array.isArray(data.publicidad) ? data.publicidad : [];
-  const support  = Array.isArray(data.soporte)    ? data.soporte    : [];
 
-  state.config = parseRowsByKey(confi);
+  state.config = confi;
+  state.support = support;
+
   state.users = sellers.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     usuario: String(r.usuario || "").trim().toLowerCase(),
@@ -306,6 +311,7 @@ async function loadAllData() {
     cliente_id: String(r.cliente_id || "").trim(),
     wasap_report: String(r.wasap_report || "").trim()
   }));
+
   state.clients = clients.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
@@ -314,6 +320,7 @@ async function loadAllData() {
     ciudad: String(r.ciudad || r.localidad || "").trim(),
     lista_precio: String(r.lista_precio || "").trim().toLowerCase()
   }));
+
   state.products = products.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
@@ -324,10 +331,11 @@ async function loadAllData() {
       lista_3: parseD9Number(r.lista_3 || r.precio || 0)
     }
   }));
-  state.ads = ads.filter(isActiveAd);
-  state.support = Object.fromEntries(support.map(r => [String(r.clave || "").trim(), String(r.valor || "").trim()]));
-}
 
+  state.ads = ads.filter(isActiveAd);
+
+  console.info(`[D9] Bootstrap Apps Script OK · productos=${state.products.length} clientes=${state.clients.length} publicidad=${state.ads.length}`);
+}
 function showView(name, pushHistory = true) {
   state.currentView = name;
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
