@@ -1,7 +1,9 @@
+const SHEET_ID = "1wHdgm_V0mloLaIsVPIIqbmTYBomx8DIUmXEplClCMz8";
 const WEBHOOK_ENDPOINTS = [
   "https://wild-pond-6b36.pancko-d9.workers.dev",
+  // "/.netlify/functions/order" // ✋ backup Netlify (desactivado)
 ];
-const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
+const OPEN_SHEET = (sheet) => `https://opensheet.elk.sh/${SHEET_ID}/${encodeURIComponent(sheet)}`;
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -37,8 +39,7 @@ const state = {
   historyOpenId: null,
   isSending: false,
   isSyncing: false,
-  manualPriceOverride: false,
-  hasLoadedData: false
+  manualPriceOverride: false
 };
 
 const bannerCarousel = {
@@ -141,10 +142,8 @@ function rowVal(row, ...keys) {
 
 function isActiveAd(row) {
   const val = rowVal(row, "activo", "active");
-  if (val === true || val === 1) return true;
-
-  const s = String(val ?? "").trim().toLowerCase();
-  return ["true", "si", "sí", "1", "activo", "yes"].includes(s);
+  if (val === true) return true;
+  return String(val).trim().toLowerCase() === "true";
 }
 
 
@@ -276,22 +275,23 @@ function openWhatsApp(phone, message) {
 }
 
 
+async function fetchSheet(name) {
+  const r = await fetch(OPEN_SHEET(name), { cache: "no-store" });
+  if (!r.ok) throw new Error(`No pude leer ${name}`);
+  return r.json();
+}
 
 async function loadAllData() {
-  const r = await fetch(BOOTSTRAP_URL, { cache: "no-store" });
-  if (!r.ok) throw new Error(`Bootstrap falló: ${r.status}`);
+  const [confi, sellers, clients, products, ads, support] = await Promise.all([
+    fetchSheet("confi"),
+    fetchSheet("usuarios"),
+    fetchSheet("clientes"),
+    fetchSheet("productos"),
+    fetchSheet("publicidad"),
+    fetchSheet("soporte")
+  ]);
 
-  const data = await r.json();
-  if (!data.ok) throw new Error("Bootstrap retornó ok:false");
-
-  const sellers  = Array.isArray(data.usuarios)   ? data.usuarios   : [];
-  const clients  = Array.isArray(data.clientes)   ? data.clientes   : [];
-  const products = Array.isArray(data.productos)  ? data.productos  : [];
-  const ads      = Array.isArray(data.publicidad) ? data.publicidad : [];
-
-  state.config = data.config || {};
-  state.support = data.soporte || {};
-
+  state.config = parseRowsByKey(confi);
   state.users = sellers.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     usuario: String(r.usuario || "").trim().toLowerCase(),
@@ -302,7 +302,6 @@ async function loadAllData() {
     cliente_id: String(r.cliente_id || "").trim(),
     wasap_report: String(r.wasap_report || "").trim()
   }));
-
   state.clients = clients.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
@@ -311,7 +310,6 @@ async function loadAllData() {
     ciudad: String(r.ciudad || r.localidad || "").trim(),
     lista_precio: String(r.lista_precio || "").trim().toLowerCase()
   }));
-
   state.products = products.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
@@ -322,15 +320,9 @@ async function loadAllData() {
       lista_3: parseD9Number(r.lista_3 || r.precio || 0)
     }
   }));
-
   state.ads = ads.filter(isActiveAd);
-  state.hasLoadedData = true;
-
-  console.log(
-    `[D9] Bootstrap Apps Script OK · productos=${state.products.length} clientes=${state.clients.length} publicidad=${state.ads.length}`
-  );
+  state.support = Object.fromEntries(support.map(r => [String(r.clave || "").trim(), String(r.valor || "").trim()]));
 }
-
 
 function showView(name, pushHistory = true) {
   state.currentView = name;
@@ -610,6 +602,7 @@ function renderBanner(skipTimerReset = false) {
     box.classList.add("hidden");
     box.classList.remove("banner-mode-full", "banner-mode-product", "banner-carousel-d9");
     box.innerHTML = "";
+    console.warn("[D9] publicidad: no llegó ninguna fila activa desde Sheets/cache.");
     return;
   }
 
@@ -1463,6 +1456,54 @@ function renderCart() {
   $("#messagePreview").textContent = generateMessageText();
 }
 
+
+function buildOrderFingerprint(payload) {
+  const cliente = payload?.cliente || {};
+  const items = (payload?.carrito || [])
+    .map(item => [
+      String(item.id || ""),
+      String(item.nombre || ""),
+      Number(item.cantidad || 0),
+      Number(item.precio || 0)
+    ].join(":"))
+    .join("|");
+
+  return [
+    payload?.vendedor?.id || "",
+    cliente.id || cliente.nombre_real || cliente.nombre || "",
+    items,
+    Number(payload?.total || 0)
+  ].join("||");
+}
+
+function isOrderSendLocked(payload = null) {
+  const now = Date.now();
+  if (state.isSending) return true;
+  if (state.orderSendLockUntil && now < state.orderSendLockUntil) return true;
+
+  if (payload) {
+    const fp = buildOrderFingerprint(payload);
+    if (state.lastOrderFingerprint && state.lastOrderFingerprint === fp && now < state.orderSendLockUntil) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function lockOrderSend(payload, durationMs = 5000) {
+  state.isSending = true;
+  state.orderSendLockUntil = Date.now() + durationMs;
+  state.lastOrderFingerprint = buildOrderFingerprint(payload);
+}
+
+function releaseOrderSendLock(delayMs = 1800) {
+  setTimeout(() => {
+    state.isSending = false;
+  }, delayMs);
+}
+
+
 function buildOrderPayload() {
   return {
     fecha: new Date().toISOString(),
@@ -1577,16 +1618,25 @@ function savePendingPayload(payload) {
 }
 
 async function sendOrder() {
-  if (state.isSending) return;
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
   if (validateOrder() !== true) return;
 
-  state.isSending = true;
+  const payload = buildOrderPayload();
+
+  if (isOrderSendLocked(payload)) return;
+  lockOrderSend(payload, 6000);
+
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
+  const confirmBtn = $("#btnConfirmOrderSend");
+
   setButtonBusy(sendBtn, true, "Enviando...", "Enviar pedido");
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Enviando...";
+  }
 
   try {
-    const payload = buildOrderPayload();
     const waPhone = state.seller?.rol === "vendedor"
       ? (state.seller.wasap_report || confText("telefono_wa") || "")
       : (confText("telefono_wa") || "");
@@ -1638,10 +1688,18 @@ async function sendOrder() {
     clearCart();
     renderSelectedClient();
     renderClients();
-    state.isSending = false;
+
     setButtonBusy(sendBtn, false, "Enviando...", "Enviar pedido");
+
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Confirmar y enviar";
+    }
+
+    releaseOrderSendLock(2200);
   }
 }
+
 
 function savePendingNow() {
   if (validateOrder() !== true) return;
@@ -1842,6 +1900,7 @@ function toast(msg) {
 
 
 function openOrderConfirmModal() {
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
   if (validateOrder() !== true) return;
 
   const modal = $("#orderConfirmModal");
@@ -1905,7 +1964,7 @@ function closeOrderConfirmModal() {
 
 function confirmOrderAndSend() {
   const confirmBtn = $("#btnConfirmOrderSend");
-  if (state.isSending || confirmBtn?.disabled) return;
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil) || confirmBtn?.disabled) return;
 
   if (confirmBtn) {
     confirmBtn.disabled = true;
@@ -2151,7 +2210,7 @@ async function init() {
   } catch (error) {
     console.error(error);
     if (!state.products.length && !state.clients.length) {
-      toast("No pude cargar los datos.");
+      toast("No pude cargar los datos de la sheet.");
     }
     renderNetwork();
   }
