@@ -1,9 +1,7 @@
-const SHEET_ID = "1wHdgm_V0mloLaIsVPIIqbmTYBomx8DIUmXEplClCMz8";
 const WEBHOOK_ENDPOINTS = [
   "https://wild-pond-6b36.pancko-d9.workers.dev",
-  // "/.netlify/functions/order" // ✋ backup Netlify (desactivado)
 ];
-const OPEN_SHEET = (sheet) => `https://opensheet.elk.sh/${SHEET_ID}/${encodeURIComponent(sheet)}`;
+const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -39,7 +37,8 @@ const state = {
   historyOpenId: null,
   isSending: false,
   isSyncing: false,
-  manualPriceOverride: false
+  manualPriceOverride: false,
+  hasLoadedData: false
 };
 
 const bannerCarousel = {
@@ -142,8 +141,10 @@ function rowVal(row, ...keys) {
 
 function isActiveAd(row) {
   const val = rowVal(row, "activo", "active");
-  if (val === true) return true;
-  return String(val).trim().toLowerCase() === "true";
+  if (val === true || val === 1) return true;
+
+  const s = String(val ?? "").trim().toLowerCase();
+  return ["true", "si", "sí", "1", "activo", "yes"].includes(s);
 }
 
 
@@ -206,6 +207,60 @@ function buildColoredInline(parts, colors, fallback = "") {
   }).join(" ");
 }
 
+
+
+
+function injectCategoryChipStylesD9() {
+  if (document.getElementById("d9-category-chip-style")) return;
+  const style = document.createElement("style");
+  style.id = "d9-category-chip-style";
+  style.textContent = `
+    .modal-category-chip-d9{
+      width:100%;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border:1px solid rgba(30,144,255,.18);
+      background:rgba(30,144,255,.08);
+      color:#183554;
+      border-radius:18px;
+      padding:10px 14px;
+      margin:8px 0 10px;
+      font:inherit;
+      text-align:left;
+      box-shadow:0 8px 18px rgba(21,91,145,.08);
+    }
+    .modal-category-chip-d9 span{
+      font-size:12px;
+      opacity:.72;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    .modal-category-chip-d9 strong{
+      flex:1;
+      font-size:15px;
+      line-height:1.1;
+      font-weight:900;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .modal-category-chip-d9 b{
+      width:28px;
+      height:28px;
+      display:grid;
+      place-items:center;
+      border-radius:999px;
+      background:white;
+      color:#1e90ff;
+      font-size:18px;
+      box-shadow:0 3px 10px rgba(0,0,0,.08);
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 
 function renderDualButton(btn, title, sub = "") {
@@ -275,23 +330,22 @@ function openWhatsApp(phone, message) {
 }
 
 
-async function fetchSheet(name) {
-  const r = await fetch(OPEN_SHEET(name), { cache: "no-store" });
-  if (!r.ok) throw new Error(`No pude leer ${name}`);
-  return r.json();
-}
 
 async function loadAllData() {
-  const [confi, sellers, clients, products, ads, support] = await Promise.all([
-    fetchSheet("confi"),
-    fetchSheet("usuarios"),
-    fetchSheet("clientes"),
-    fetchSheet("productos"),
-    fetchSheet("publicidad"),
-    fetchSheet("soporte")
-  ]);
+  const r = await fetch(BOOTSTRAP_URL, { cache: "no-store" });
+  if (!r.ok) throw new Error(`Bootstrap falló: ${r.status}`);
 
-  state.config = parseRowsByKey(confi);
+  const data = await r.json();
+  if (!data.ok) throw new Error("Bootstrap retornó ok:false");
+
+  const sellers  = Array.isArray(data.usuarios)   ? data.usuarios   : [];
+  const clients  = Array.isArray(data.clientes)   ? data.clientes   : [];
+  const products = Array.isArray(data.productos)  ? data.productos  : [];
+  const ads      = Array.isArray(data.publicidad) ? data.publicidad : [];
+
+  state.config = data.config || {};
+  state.support = data.soporte || {};
+
   state.users = sellers.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     usuario: String(r.usuario || "").trim().toLowerCase(),
@@ -302,6 +356,7 @@ async function loadAllData() {
     cliente_id: String(r.cliente_id || "").trim(),
     wasap_report: String(r.wasap_report || "").trim()
   }));
+
   state.clients = clients.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
@@ -310,6 +365,7 @@ async function loadAllData() {
     ciudad: String(r.ciudad || r.localidad || "").trim(),
     lista_precio: String(r.lista_precio || "").trim().toLowerCase()
   }));
+
   state.products = products.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
@@ -320,9 +376,15 @@ async function loadAllData() {
       lista_3: parseD9Number(r.lista_3 || r.precio || 0)
     }
   }));
+
   state.ads = ads.filter(isActiveAd);
-  state.support = Object.fromEntries(support.map(r => [String(r.clave || "").trim(), String(r.valor || "").trim()]));
+  state.hasLoadedData = true;
+
+  console.log(
+    `[D9] Bootstrap Apps Script OK · productos=${state.products.length} clientes=${state.clients.length} publicidad=${state.ads.length}`
+  );
 }
+
 
 function showView(name, pushHistory = true) {
   state.currentView = name;
@@ -602,7 +664,6 @@ function renderBanner(skipTimerReset = false) {
     box.classList.add("hidden");
     box.classList.remove("banner-mode-full", "banner-mode-product", "banner-carousel-d9");
     box.innerHTML = "";
-    console.warn("[D9] publicidad: no llegó ninguna fila activa desde Sheets/cache.");
     return;
   }
 
@@ -997,9 +1058,17 @@ function renderQuickLabels() {
   }
   const clientSearch = $("#clientSearch");
   if (clientSearch && isClient) clientSearch.value = "";
-  $("#productModalHint").textContent = state.selectedCategory
-    ? `Categoría activa: ${state.selectedCategory}. Podés marcar varios.`
-    : "Todas las categorías. Podés marcar varios.";
+  const productHint = $("#productModalHint");
+  if (productHint) {
+    const catLabel = state.selectedCategory || "Todas las categorías";
+    productHint.innerHTML = `
+      <button id="btnCategoryInsideProductModal" class="modal-category-chip-d9" type="button">
+        <span>Categoría</span>
+        <strong>${esc(catLabel)}</strong>
+        <b>⌄</b>
+      </button>
+    `;
+  }
 }
 
 function renderClients() {
@@ -1456,54 +1525,6 @@ function renderCart() {
   $("#messagePreview").textContent = generateMessageText();
 }
 
-
-function buildOrderFingerprint(payload) {
-  const cliente = payload?.cliente || {};
-  const items = (payload?.carrito || [])
-    .map(item => [
-      String(item.id || ""),
-      String(item.nombre || ""),
-      Number(item.cantidad || 0),
-      Number(item.precio || 0)
-    ].join(":"))
-    .join("|");
-
-  return [
-    payload?.vendedor?.id || "",
-    cliente.id || cliente.nombre_real || cliente.nombre || "",
-    items,
-    Number(payload?.total || 0)
-  ].join("||");
-}
-
-function isOrderSendLocked(payload = null) {
-  const now = Date.now();
-  if (state.isSending) return true;
-  if (state.orderSendLockUntil && now < state.orderSendLockUntil) return true;
-
-  if (payload) {
-    const fp = buildOrderFingerprint(payload);
-    if (state.lastOrderFingerprint && state.lastOrderFingerprint === fp && now < state.orderSendLockUntil) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function lockOrderSend(payload, durationMs = 5000) {
-  state.isSending = true;
-  state.orderSendLockUntil = Date.now() + durationMs;
-  state.lastOrderFingerprint = buildOrderFingerprint(payload);
-}
-
-function releaseOrderSendLock(delayMs = 1800) {
-  setTimeout(() => {
-    state.isSending = false;
-  }, delayMs);
-}
-
-
 function buildOrderPayload() {
   return {
     fecha: new Date().toISOString(),
@@ -1618,25 +1639,16 @@ function savePendingPayload(payload) {
 }
 
 async function sendOrder() {
-  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
+  if (state.isSending) return;
   if (validateOrder() !== true) return;
 
-  const payload = buildOrderPayload();
-
-  if (isOrderSendLocked(payload)) return;
-  lockOrderSend(payload, 6000);
-
+  state.isSending = true;
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
-  const confirmBtn = $("#btnConfirmOrderSend");
-
   setButtonBusy(sendBtn, true, "Enviando...", "Enviar pedido");
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = "Enviando...";
-  }
 
   try {
+    const payload = buildOrderPayload();
     const waPhone = state.seller?.rol === "vendedor"
       ? (state.seller.wasap_report || confText("telefono_wa") || "")
       : (confText("telefono_wa") || "");
@@ -1688,18 +1700,10 @@ async function sendOrder() {
     clearCart();
     renderSelectedClient();
     renderClients();
-
+    state.isSending = false;
     setButtonBusy(sendBtn, false, "Enviando...", "Enviar pedido");
-
-    if (confirmBtn) {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = "Confirmar y enviar";
-    }
-
-    releaseOrderSendLock(2200);
   }
 }
-
 
 function savePendingNow() {
   if (validateOrder() !== true) return;
@@ -1900,7 +1904,6 @@ function toast(msg) {
 
 
 function openOrderConfirmModal() {
-  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
   if (validateOrder() !== true) return;
 
   const modal = $("#orderConfirmModal");
@@ -1964,7 +1967,7 @@ function closeOrderConfirmModal() {
 
 function confirmOrderAndSend() {
   const confirmBtn = $("#btnConfirmOrderSend");
-  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil) || confirmBtn?.disabled) return;
+  if (state.isSending || confirmBtn?.disabled) return;
 
   if (confirmBtn) {
     confirmBtn.disabled = true;
@@ -1976,6 +1979,16 @@ function confirmOrderAndSend() {
 }
 
 function bind() {
+  document.addEventListener("click", (e) => {
+    const insideCategoryBtn = e.target.closest("#btnCategoryInsideProductModal");
+    if (insideCategoryBtn) {
+      e.preventDefault();
+      renderCategories();
+      openModal("category");
+      return;
+    }
+  });
+
   $("#btnGoOrder").addEventListener("click", () => showView("order"));
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
@@ -2186,6 +2199,7 @@ function renderSellerName(el, nombre){
 }
 
 async function init() {
+  injectCategoryChipStylesD9();
   setupAndroidBackButton();
   bind();
   hydrateCacheState();
@@ -2210,7 +2224,7 @@ async function init() {
   } catch (error) {
     console.error(error);
     if (!state.products.length && !state.clients.length) {
-      toast("No pude cargar los datos de la sheet.");
+      toast("No pude cargar los datos.");
     }
     renderNetwork();
   }
