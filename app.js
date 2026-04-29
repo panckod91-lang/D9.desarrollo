@@ -217,38 +217,136 @@ function injectCategoryChipStylesD9() {
   const style = document.createElement("style");
   style.id = "d9-category-chip-style";
   style.textContent = `
-    #productModal.modal{
-      align-items:center !important;
-      justify-content:center !important;
-      padding:4px 0 !important;
-    }
-    #productModal .product-modal-panel-d9{
+    #productModal .modal-card,
+    #productModal .modal-content,
+    #productModal .modal-box{
       height:96vh !important;
       max-height:96vh !important;
       min-height:96vh !important;
-      width:min(520px, calc(100vw - 18px)) !important;
-      border-radius:28px !important;
+      margin-top:1vh !important;
+      margin-bottom:1vh !important;
+    }
+
+    #productModal .modal-header,
+    #productModal .modal-head{
+      position:relative;
+      display:flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      text-align:center !important;
+      padding-right:58px !important;
+    }
+
+    #productModal .modal-header h2,
+    #productModal .modal-head h2,
+    #productModal h2{
+      width:100%;
+      text-align:center !important;
+      font-size:24px !important;
+      font-weight:950 !important;
+      letter-spacing:-.02em;
+      color:#183554;
+    }
+
+    #productModal .modal-body,
+    #productModal .modal-scroll{
       display:flex !important;
       flex-direction:column !important;
-      overflow:hidden !important;
-    }
-    #productModal #productList{
-      flex:1 1 auto !important;
       min-height:0 !important;
-      overflow-y:auto !important;
-      -webkit-overflow-scrolling:touch !important;
+      flex:1 1 auto !important;
     }
-    .modal-category-box-d9{display:grid;gap:6px;margin:0 0 10px;width:100%;}
-    .modal-category-current-d9{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 2px;color:#183554;min-width:0;}
-    .modal-category-current-d9 span{font-size:12px;text-transform:uppercase;letter-spacing:.045em;opacity:.68;font-weight:800;white-space:nowrap;}
-    .modal-category-current-d9 strong{min-width:0;text-align:right;font-size:15px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .modal-category-button-d9{width:100% !important;height:44px !important;min-height:44px !important;display:flex !important;align-items:center !important;justify-content:center !important;border:1px solid rgba(30,144,255,.18) !important;background:rgba(30,144,255,.06) !important;color:#17315a !important;border-radius:15px !important;padding:0 14px !important;font:inherit !important;box-shadow:0 6px 14px rgba(21,91,145,.06) !important;text-align:center !important;}
-    .modal-category-button-d9 strong{display:block;width:100%;font-size:15px;line-height:1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .modal.front-modal-d9{z-index:99999 !important;}
-    .modal.front-modal-d9 .modal-panel,.modal.front-modal-d9 .product-modal-panel-d9{z-index:100000 !important;}
+
+    #productList{
+      flex:1 1 auto !important;
+      align-content:flex-start !important;
+      justify-content:flex-start !important;
+      gap:12px !important;
+      overflow:auto !important;
+      min-height:0 !important;
+      max-height:none !important;
+    }
+
+    #productList .product-item,
+    #productList .product-picker{
+      flex:0 0 auto !important;
+      min-height:98px !important;
+      height:auto !important;
+      align-items:center !important;
+    }
+
+    .modal-category-box-d9{
+      width:100%;
+      display:grid;
+      gap:6px;
+      margin:2px 0 12px;
+    }
+
+    .modal-category-current-d9{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding:0 2px;
+      color:#183554;
+      text-align:center;
+    }
+
+    .modal-category-current-d9 span{
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.045em;
+      opacity:.68;
+      font-weight:800;
+    }
+
+    .modal-category-current-d9 strong{
+      min-width:0;
+      font-size:15px;
+      font-weight:950;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .modal-category-button-d9{
+      width:100% !important;
+      max-width:none !important;
+      min-height:44px !important;
+      height:44px !important;
+      display:flex !important;
+      justify-content:center !important;
+      align-items:center !important;
+      text-align:center !important;
+      border-radius:16px !important;
+      padding:8px 14px !important;
+      margin:0 !important;
+    }
+
+    .modal-category-button-d9 .picker-label,
+    .modal-category-button-d9 .picker-arrow{
+      display:none !important;
+    }
+
+    .modal-category-button-d9 strong{
+      flex:0 1 auto !important;
+      font-size:15px !important;
+      font-weight:950 !important;
+      white-space:nowrap !important;
+      line-height:1 !important;
+    }
+
+    .modal.front-modal-d9{
+      z-index:99999 !important;
+    }
+    .modal.front-modal-d9 .modal-card,
+    .modal.front-modal-d9 .modal-content,
+    .modal.front-modal-d9 .modal-box{
+      z-index:100000 !important;
+    }
   `;
   document.head.appendChild(style);
 }
+
 
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
@@ -1055,8 +1153,9 @@ function renderQuickLabels() {
           <span>Categoría seleccionada</span>
           <strong>${esc(catLabel)}</strong>
         </div>
-        <button id="btnCategoryInsideProductModal" class="modal-category-button-d9" type="button">
-          <strong>Cambiar categoría</strong>
+        <button id="btnCategoryInsideProductModal" class="picker-btn modal-category-button-d9" type="button">
+          <span class="picker-label">Categoría</span>
+          <strong>Filtar Categoria</strong>
         </button>
       </div>
     `;
