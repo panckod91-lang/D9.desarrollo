@@ -1105,7 +1105,7 @@ function renderQuickLabels() {
         </div>
         <button id="btnCategoryInsideProductModal" class="picker-btn modal-category-button-d9" type="button">
           <span class="picker-label">Categoría</span>
-          <strong>Seleccionar categoría</strong>
+          <strong>Filtar Categoria</strong>
         </button>
       </div>
     `;
