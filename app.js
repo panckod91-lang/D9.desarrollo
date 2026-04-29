@@ -28,6 +28,8 @@ const state = {
   products: [],
   ads: [],
   support: {},
+  dataLoaded: false,
+  dataSource: "cache",
   seller: null,
   activePriceList: "lista_1",
   priceSearch: "",
@@ -124,7 +126,7 @@ async function registerServiceWorker() {
   }
 }
 const onlyDigits = (v) => String(v || "").replace(/\D+/g, "");
-const isTrue = (v) => String(v).trim().toLowerCase() === "true";
+const isTrue = (v) => v === true || ["true", "si", "sí", "1", "activo", "yes"].includes(String(v).trim().toLowerCase());
 function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;"); }
 
 function rowVal(row, ...keys) {
@@ -143,8 +145,7 @@ function rowVal(row, ...keys) {
 
 function isActiveAd(row) {
   const val = rowVal(row, "activo", "active");
-  if (val === true) return true;
-  return String(val).trim().toLowerCase() === "true";
+  return isTrue(val);
 }
 
 
@@ -361,13 +362,15 @@ function normalizeProductsRows(rows) {
   }));
 }
 
-function applyLoadedData({ config, users, clients, products, ads, support }) {
+function applyLoadedData({ config, users, clients, products, ads, support, source = "cache" }) {
   state.config = config || {};
   state.users = users || [];
   state.clients = clients || [];
   state.products = products || [];
   state.ads = ads || [];
   state.support = support || {};
+  state.dataSource = source;
+  state.dataLoaded = source !== "cache";
 }
 
 async function loadAllDataFromAppsScript() {
@@ -384,10 +387,11 @@ async function loadAllDataFromAppsScript() {
     clients: normalizeClientsRows(data.clientes),
     products: normalizeProductsRows(data.productos),
     ads: (data.publicidad || []).filter(isActiveAd),
-    support: normalizeSupportFromApi(data.soporte)
+    support: normalizeSupportFromApi(data.soporte),
+    source: "apps_script"
   });
 
-  console.info("[D9] Datos cargados desde Apps Script API", data.timestamp || "");
+  console.info("[D9] Datos cargados desde Apps Script API", data.timestamp || "", `publicidad=${state.ads.length}`);
 }
 
 async function loadAllDataFromOpenSheetFallback() {
@@ -406,10 +410,11 @@ async function loadAllDataFromOpenSheetFallback() {
     clients: normalizeClientsRows(clients),
     products: normalizeProductsRows(products),
     ads: ads.filter(isActiveAd),
-    support: normalizeSupportFromApi(support)
+    support: normalizeSupportFromApi(support),
+    source: "opensheet_fallback"
   });
 
-  console.info("[D9] Datos cargados desde OpenSheet fallback");
+  console.info("[D9] Datos cargados desde OpenSheet fallback", `publicidad=${state.ads.length}`);
 }
 
 async function loadAllData() {
@@ -699,7 +704,12 @@ function renderBanner(skipTimerReset = false) {
     box.classList.add("hidden");
     box.classList.remove("banner-mode-full", "banner-mode-product", "banner-carousel-d9");
     box.innerHTML = "";
-    console.warn("[D9] publicidad: no llegó ninguna fila activa desde Sheets/cache.");
+
+    // Evita el falso aviso al inicio: primero renderizamos cache/local,
+    // después llega la API. Solo avisamos si la fuente remota ya cargó.
+    if (state.dataLoaded) {
+      console.warn(`[D9] publicidad: la fuente ${state.dataSource} no devolvió banners activos.`);
+    }
     return;
   }
 
