@@ -417,6 +417,70 @@ function injectProductModalMicroStylesD9() {
 }
 
 
+
+function injectInlineQtyStylesD9() {
+  if (document.getElementById("d9-inline-qty-style")) return;
+  const style = document.createElement("style");
+  style.id = "d9-inline-qty-style";
+  style.textContent = `
+    #productModal .product-side{
+      align-self:stretch !important;
+      display:flex !important;
+      flex-direction:column !important;
+      justify-content:flex-start !important;
+      align-items:flex-end !important;
+      gap:6px !important;
+      padding-top:2px !important;
+    }
+    #productModal .product-price{
+      line-height:1.05 !important;
+      margin-top:0 !important;
+    }
+    .qty-inline-d9{
+      display:flex !important;
+      align-items:center !important;
+      justify-content:flex-end !important;
+      gap:6px !important;
+      font-size:13px !important;
+      color:#6f8294 !important;
+      white-space:nowrap !important;
+      user-select:none !important;
+    }
+    .qty-inline-d9 span{
+      font-weight:700 !important;
+      opacity:.86 !important;
+    }
+    .qty-inline-d9 strong{
+      min-width:18px !important;
+      text-align:center !important;
+      font-size:15px !important;
+      color:#173454 !important;
+      font-weight:950 !important;
+    }
+    .qty-inline-btn-d9{
+      width:28px !important;
+      height:28px !important;
+      min-width:28px !important;
+      border-radius:999px !important;
+      border:1px solid rgba(36,137,190,.25) !important;
+      background:#ffffff !important;
+      color:#173454 !important;
+      font-size:20px !important;
+      font-weight:900 !important;
+      line-height:1 !important;
+      display:grid !important;
+      place-items:center !important;
+      padding:0 !important;
+      box-shadow:0 2px 7px rgba(21,91,145,.10) !important;
+    }
+    .qty-inline-btn-d9:active{
+      transform:scale(.94) !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -1573,7 +1637,14 @@ function renderProducts() {
           </div>
           <div class="product-side">
             <div class="product-price">${money(productPrice(p))}</div>
-            <div class="pick-state">${selected ? "Seleccionado" : "Tocar para agregar"}</div>
+            ${selected ? `
+              <div class="qty-inline-d9" data-no-toggle="true">
+                <span>Cant:</span>
+                <button class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" type="button">−</button>
+                <strong>${state.cart.find(x => x.id === p.id)?.cantidad || 1}</strong>
+                <button class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" type="button">+</button>
+              </div>
+            ` : `<div class="pick-state">Tocar para agregar</div>`}
           </div>
         </button>`;
     }).join("")
@@ -2204,6 +2275,21 @@ function confirmOrderAndSend() {
 
 function bind() {
   document.addEventListener("click", (e) => {
+    const qtyBtn = e.target.closest("[data-product-qty]");
+    if (!qtyBtn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = qtyBtn.dataset.id;
+    const action = qtyBtn.dataset.productQty;
+    if (!id) return;
+
+    if (action === "plus") updateQty(id, 1);
+    if (action === "minus") updateQty(id, -1);
+  });
+
+  document.addEventListener("click", (e) => {
     const insideCategoryBtn = e.target.closest("#btnCategoryInsideProductModal");
     if (insideCategoryBtn) {
       e.preventDefault();
@@ -2431,6 +2517,7 @@ function renderSellerName(el, nombre){
 async function init() {
   injectCategoryChipStylesD9();
   injectProductModalMicroStylesD9();
+  injectInlineQtyStylesD9();
   setupAndroidBackButton();
   bind();
   hydrateCacheState();
