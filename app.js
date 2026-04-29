@@ -1,11 +1,10 @@
-const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
-
 const SHEET_ID = "1wHdgm_V0mloLaIsVPIIqbmTYBomx8DIUmXEplClCMz8";
 const WEBHOOK_ENDPOINTS = [
   "https://wild-pond-6b36.pancko-d9.workers.dev",
   // "/.netlify/functions/order" // ✋ backup Netlify (desactivado)
 ];
 const OPEN_SHEET = (sheet) => `https://opensheet.elk.sh/${SHEET_ID}/${encodeURIComponent(sheet)}`;
+const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec?action=bootstrap";
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -41,7 +40,8 @@ const state = {
   historyOpenId: null,
   isSending: false,
   isSyncing: false,
-  manualPriceOverride: false
+  manualPriceOverride: false,
+  hasLoadedData: false
 };
 
 const bannerCarousel = {
@@ -144,19 +144,10 @@ function rowVal(row, ...keys) {
 
 function isActiveAd(row) {
   const val = rowVal(row, "activo", "active");
+  if (val === true || val === 1) return true;
 
-  if (val === true) return true;
-
-  const s = String(val).trim().toLowerCase();
-
-  return (
-    s === "true" ||
-    s === "si" ||
-    s === "sí" ||
-    s === "1" ||
-    s === "activo" ||
-    s === "yes"
-  );
+  const s = String(val ?? "").trim().toLowerCase();
+  return ["true", "si", "sí", "1", "activo", "yes"].includes(s);
 }
 
 
@@ -301,15 +292,13 @@ async function loadAllData() {
   const data = await r.json();
   if (!data.ok) throw new Error("Bootstrap retornó ok:false");
 
-  const confi    = data.config || {};
-  const support  = data.soporte || {};
   const sellers  = Array.isArray(data.usuarios)   ? data.usuarios   : [];
   const clients  = Array.isArray(data.clientes)   ? data.clientes   : [];
   const products = Array.isArray(data.productos)  ? data.productos  : [];
   const ads      = Array.isArray(data.publicidad) ? data.publicidad : [];
 
-  state.config = confi;
-  state.support = support;
+  state.config = data.config || {};
+  state.support = data.soporte || {};
 
   state.users = sellers.filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
@@ -343,7 +332,13 @@ async function loadAllData() {
   }));
 
   state.ads = ads.filter(isActiveAd);
+  state.hasLoadedData = true;
+
+  console.log(
+    `[D9] Bootstrap Apps Script OK · productos=${state.products.length} clientes=${state.clients.length} publicidad=${state.ads.length}`
+  );
 }
+
 
 function showView(name, pushHistory = true) {
   state.currentView = name;
@@ -623,7 +618,6 @@ function renderBanner(skipTimerReset = false) {
     box.classList.add("hidden");
     box.classList.remove("banner-mode-full", "banner-mode-product", "banner-carousel-d9");
     box.innerHTML = "";
-    console.warn("[D9] publicidad: no llegó ninguna fila activa desde Sheets/cache.");
     return;
   }
 
@@ -2165,7 +2159,7 @@ async function init() {
   } catch (error) {
     console.error(error);
     if (!state.products.length && !state.clients.length) {
-      toast("No pude cargar los datos de la sheet.");
+      toast("No pude cargar los datos.");
     }
     renderNetwork();
   }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-offline-v8";
+const CACHE_NAME = "d9-offline-v10";
 const URLS = [
   "./",
   "./index.html",
@@ -92,5 +92,3 @@ self.addEventListener("fetch", event => {
 
   event.respondWith(cacheFirst(event.request));
 });
-
-// bootstrap_publicidad_listo
