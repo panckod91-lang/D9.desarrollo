@@ -1,4 +1,5 @@
 const SHEET_ID = "1wHdgm_V0mloLaIsVPIIqbmTYBomx8DIUmXEplClCMz8";
+const APPS_SCRIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycbyG1FnAOxm5tpUcvd4n6kvg9yHn6BMjoNOveUXggaEd6jAoDsyIo6RiYu06dPTxwTm3/exec";
 const WEBHOOK_ENDPOINTS = [
   "https://wild-pond-6b36.pancko-d9.workers.dev",
   // "/.netlify/functions/order" // ✋ backup Netlify (desactivado)
@@ -281,18 +282,48 @@ async function fetchSheet(name) {
   return r.json();
 }
 
-async function loadAllData() {
-  const [confi, sellers, clients, products, ads, support] = await Promise.all([
-    fetchSheet("confi"),
-    fetchSheet("usuarios"),
-    fetchSheet("clientes"),
-    fetchSheet("productos"),
-    fetchSheet("publicidad"),
-    fetchSheet("soporte")
-  ]);
+function normalizeConfigFromApi(config) {
+  const out = {};
 
-  state.config = parseRowsByKey(confi);
-  state.users = sellers.filter(r => isTrue(r.activo)).map(r => ({
+  Object.entries(config || {}).forEach(([key, value]) => {
+    const cleanKey = String(key || "").trim();
+    if (!cleanKey) return;
+
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      out[cleanKey] = {
+        valor: String(value.valor ?? value.tex1 ?? "").trim(),
+        tex1: String(value.tex1 ?? value.valor ?? "").trim(),
+        tex2: String(value.tex2 ?? "").trim(),
+        tex3: String(value.tex3 ?? "").trim()
+      };
+      return;
+    }
+
+    out[cleanKey] = {
+      valor: String(value ?? "").trim(),
+      tex1: String(value ?? "").trim(),
+      tex2: "",
+      tex3: ""
+    };
+  });
+
+  return out;
+}
+
+function normalizeSupportFromApi(support) {
+  if (Array.isArray(support)) {
+    return Object.fromEntries(support.map(r => [String(r.clave || "").trim(), String(r.valor || "").trim()]));
+  }
+
+  const out = {};
+  Object.entries(support || {}).forEach(([key, value]) => {
+    out[String(key || "").trim()] = String(value ?? "").trim();
+  });
+  return out;
+}
+
+function normalizeUsersRows(rows) {
+  return (rows || []).filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     usuario: String(r.usuario || "").trim().toLowerCase(),
     nombre: String(r.nombre || "").trim(),
@@ -300,9 +331,14 @@ async function loadAllData() {
     rol: String(r.rol || "cliente").trim().toLowerCase(),
     lista_precio: String(r.lista_precio || "").trim().toLowerCase(),
     cliente_id: String(r.cliente_id || "").trim(),
-    wasap_report: String(r.wasap_report || "").trim()
+    wasap_report: String(r.wasap_report || "").trim(),
+    color_1: String(r.color_1 || "").trim(),
+    color_2: String(r.color_2 || "").trim()
   }));
-  state.clients = clients.filter(r => isTrue(r.activo)).map(r => ({
+}
+
+function normalizeClientsRows(rows) {
+  return (rows || []).filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
     telefono: String(r.telefono || "").trim(),
@@ -310,7 +346,10 @@ async function loadAllData() {
     ciudad: String(r.ciudad || r.localidad || "").trim(),
     lista_precio: String(r.lista_precio || "").trim().toLowerCase()
   }));
-  state.products = products.filter(r => isTrue(r.activo)).map(r => ({
+}
+
+function normalizeProductsRows(rows) {
+  return (rows || []).filter(r => isTrue(r.activo)).map(r => ({
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
     categoria: String(r.categoria || "Sin categoría").trim() || "Sin categoría",
@@ -320,8 +359,66 @@ async function loadAllData() {
       lista_3: parseD9Number(r.lista_3 || r.precio || 0)
     }
   }));
-  state.ads = ads.filter(isActiveAd);
-  state.support = Object.fromEntries(support.map(r => [String(r.clave || "").trim(), String(r.valor || "").trim()]));
+}
+
+function applyLoadedData({ config, users, clients, products, ads, support }) {
+  state.config = config || {};
+  state.users = users || [];
+  state.clients = clients || [];
+  state.products = products || [];
+  state.ads = ads || [];
+  state.support = support || {};
+}
+
+async function loadAllDataFromAppsScript() {
+  const url = `${APPS_SCRIPT_ENDPOINT}?action=bootstrap&_=${Date.now()}`;
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`No pude leer API D9 (${r.status})`);
+
+  const data = await r.json();
+  if (!data || data.ok !== true) throw new Error(data?.error || "La API D9 respondió con error");
+
+  applyLoadedData({
+    config: normalizeConfigFromApi(data.config),
+    users: normalizeUsersRows(data.usuarios),
+    clients: normalizeClientsRows(data.clientes),
+    products: normalizeProductsRows(data.productos),
+    ads: (data.publicidad || []).filter(isActiveAd),
+    support: normalizeSupportFromApi(data.soporte)
+  });
+
+  console.info("[D9] Datos cargados desde Apps Script API", data.timestamp || "");
+}
+
+async function loadAllDataFromOpenSheetFallback() {
+  const [confi, sellers, clients, products, ads, support] = await Promise.all([
+    fetchSheet("confi"),
+    fetchSheet("usuarios"),
+    fetchSheet("clientes"),
+    fetchSheet("productos"),
+    fetchSheet("publicidad"),
+    fetchSheet("soporte")
+  ]);
+
+  applyLoadedData({
+    config: parseRowsByKey(confi),
+    users: normalizeUsersRows(sellers),
+    clients: normalizeClientsRows(clients),
+    products: normalizeProductsRows(products),
+    ads: ads.filter(isActiveAd),
+    support: normalizeSupportFromApi(support)
+  });
+
+  console.info("[D9] Datos cargados desde OpenSheet fallback");
+}
+
+async function loadAllData() {
+  try {
+    await loadAllDataFromAppsScript();
+  } catch (apiError) {
+    console.warn("[D9] Falló Apps Script API, uso fallback OpenSheet:", apiError);
+    await loadAllDataFromOpenSheetFallback();
+  }
 }
 
 function showView(name, pushHistory = true) {
