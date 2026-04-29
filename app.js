@@ -379,6 +379,44 @@ function injectCategoryChipStylesD9() {
 }
 
 
+
+function injectProductModalMicroStylesD9() {
+  if (document.getElementById("d9-product-modal-v8-style")) return;
+  const style = document.createElement("style");
+  style.id = "d9-product-modal-v8-style";
+  style.textContent = `
+    #productModal .modal-head-row h3,
+    #productModal .modal-header h2,
+    #productModal .modal-head h2,
+    #productModal h2:first-child{
+      white-space:nowrap !important;
+      overflow:hidden !important;
+      text-overflow:ellipsis !important;
+      font-size:24px !important;
+      line-height:1.12 !important;
+    }
+    @media (max-width: 360px){
+      #productModal .modal-head-row h3,
+      #productModal .modal-header h2,
+      #productModal .modal-head h2,
+      #productModal h2:first-child{
+        font-size:22px !important;
+      }
+    }
+    .modal-category-current-d9 strong{ max-width:72% !important; }
+    #categoryModal.front-modal-d9,
+    .modal.front-modal-d9{ z-index:999999 !important; }
+    #categoryModal.front-modal-d9 .modal-card,
+    #categoryModal.front-modal-d9 .modal-content,
+    #categoryModal.front-modal-d9 .modal-box,
+    .modal.front-modal-d9 .modal-card,
+    .modal.front-modal-d9 .modal-content,
+    .modal.front-modal-d9 .modal-box{ z-index:1000000 !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -529,6 +567,7 @@ function closeModal(name) {
   const modal = document.getElementById(`${name}Modal`);
   if (!modal) return;
   modal.classList.remove("front-modal-d9");
+  modal.style.zIndex = "";
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
   if (name === "product") {
@@ -1181,7 +1220,7 @@ function renderQuickLabels() {
     productHint.innerHTML = `
       <div class="modal-category-box-d9">
         <div class="modal-category-current-d9">
-          <span>Categoría seleccionada</span>
+          <span>Cat.</span>
           <strong>${esc(catLabel)}</strong>
         </div>
         <button id="btnCategoryInsideProductModal" class="modal-category-button-d9" type="button">Cambiar categoría</button>
@@ -2168,9 +2207,13 @@ function bind() {
     const insideCategoryBtn = e.target.closest("#btnCategoryInsideProductModal");
     if (insideCategoryBtn) {
       e.preventDefault();
+      e.stopPropagation();
       renderCategories();
       const categoryModal = document.getElementById("categoryModal");
-      if (categoryModal) categoryModal.classList.add("front-modal-d9");
+      if (categoryModal) {
+        categoryModal.classList.add("front-modal-d9");
+        categoryModal.style.zIndex = "999999";
+      }
       openModal("category");
       return;
     }
@@ -2387,6 +2430,7 @@ function renderSellerName(el, nombre){
 
 async function init() {
   injectCategoryChipStylesD9();
+  injectProductModalMicroStylesD9();
   setupAndroidBackButton();
   bind();
   hydrateCacheState();
