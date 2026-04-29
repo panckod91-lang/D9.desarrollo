@@ -38,7 +38,9 @@ const state = {
   isSending: false,
   isSyncing: false,
   manualPriceOverride: false,
-  hasLoadedData: false
+  hasLoadedData: false,
+  orderSendLockUntil: 0,
+  lastOrderFingerprint: ""
 };
 
 const bannerCarousel = {
@@ -215,48 +217,68 @@ function injectCategoryChipStylesD9() {
   const style = document.createElement("style");
   style.id = "d9-category-chip-style";
   style.textContent = `
-    .modal-category-chip-d9{
-      width:100%;
+    .modal-category-box-d9{
+      display:grid;
+      gap:8px;
+      margin:4px 0 12px;
+    }
+    .modal-category-current-d9{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:10px;
-      border:1px solid rgba(30,144,255,.18);
-      background:rgba(30,144,255,.08);
+      padding:0 2px;
       color:#183554;
-      border-radius:18px;
-      padding:10px 14px;
-      margin:8px 0 10px;
-      font:inherit;
-      text-align:left;
-      box-shadow:0 8px 18px rgba(21,91,145,.08);
     }
-    .modal-category-chip-d9 span{
+    .modal-category-current-d9 span{
       font-size:12px;
-      opacity:.72;
-      font-weight:700;
       text-transform:uppercase;
-      letter-spacing:.04em;
+      letter-spacing:.045em;
+      opacity:.68;
+      font-weight:800;
     }
-    .modal-category-chip-d9 strong{
-      flex:1;
+    .modal-category-current-d9 strong{
+      min-width:0;
+      text-align:right;
       font-size:15px;
-      line-height:1.1;
       font-weight:900;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
     }
-    .modal-category-chip-d9 b{
-      width:28px;
-      height:28px;
-      display:grid;
-      place-items:center;
-      border-radius:999px;
-      background:white;
-      color:#1e90ff;
-      font-size:18px;
-      box-shadow:0 3px 10px rgba(0,0,0,.08);
+    .modal-category-button-d9{
+      width:100%;
+      min-height:52px;
+      justify-content:flex-start;
+      text-align:left;
+      border-radius:18px;
+    }
+    .modal-category-button-d9 .picker-label{
+      opacity:.72;
+      font-size:12px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.035em;
+      margin-right:8px;
+    }
+    .modal-category-button-d9 strong{
+      flex:1;
+      font-size:16px;
+      font-weight:900;
+    }
+    .modal-category-button-d9 .picker-arrow{
+      margin-left:auto;
+      font-size:24px;
+      line-height:1;
+      opacity:.65;
+    }
+    .modal.front-modal-d9{
+      z-index:99999 !important;
+    }
+    .modal.front-modal-d9 .modal-card,
+    .modal.front-modal-d9 .modal-content,
+    .modal.front-modal-d9 .modal-box{
+      z-index:100000 !important;
     }
   `;
   document.head.appendChild(style);
@@ -412,6 +434,7 @@ function openModal(name, pushHistory = true) {
 function closeModal(name) {
   const modal = document.getElementById(`${name}Modal`);
   if (!modal) return;
+  modal.classList.remove("front-modal-d9");
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
   if (name === "product") {
@@ -1062,11 +1085,17 @@ function renderQuickLabels() {
   if (productHint) {
     const catLabel = state.selectedCategory || "Todas las categorías";
     productHint.innerHTML = `
-      <button id="btnCategoryInsideProductModal" class="modal-category-chip-d9" type="button">
-        <span>Categoría</span>
-        <strong>${esc(catLabel)}</strong>
-        <b>⌄</b>
-      </button>
+      <div class="modal-category-box-d9">
+        <div class="modal-category-current-d9">
+          <span>Categoría seleccionada</span>
+          <strong>${esc(catLabel)}</strong>
+        </div>
+        <button id="btnCategoryInsideProductModal" class="picker-btn modal-category-button-d9" type="button">
+          <span class="picker-label">Categoría</span>
+          <strong>Seleccionar categoría</strong>
+          <span class="picker-arrow">›</span>
+        </button>
+      </div>
     `;
   }
 }
@@ -1525,6 +1554,54 @@ function renderCart() {
   $("#messagePreview").textContent = generateMessageText();
 }
 
+
+function buildOrderFingerprint(payload) {
+  const cliente = payload?.cliente || {};
+  const items = (payload?.carrito || [])
+    .map(item => [
+      String(item.id || ""),
+      String(item.nombre || ""),
+      Number(item.cantidad || 0),
+      Number(item.precio || 0)
+    ].join(":"))
+    .join("|");
+
+  return [
+    payload?.vendedor?.id || "",
+    cliente.id || cliente.nombre_real || cliente.nombre || "",
+    items,
+    Number(payload?.total || 0)
+  ].join("||");
+}
+
+function isOrderSendLocked(payload = null) {
+  const now = Date.now();
+  if (state.isSending) return true;
+  if (state.orderSendLockUntil && now < state.orderSendLockUntil) return true;
+
+  if (payload) {
+    const fp = buildOrderFingerprint(payload);
+    if (state.lastOrderFingerprint && state.lastOrderFingerprint === fp && now < state.orderSendLockUntil) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function lockOrderSend(payload, durationMs = 5000) {
+  state.isSending = true;
+  state.orderSendLockUntil = Date.now() + durationMs;
+  state.lastOrderFingerprint = buildOrderFingerprint(payload);
+}
+
+function releaseOrderSendLock(delayMs = 1800) {
+  setTimeout(() => {
+    state.isSending = false;
+  }, delayMs);
+}
+
+
 function buildOrderPayload() {
   return {
     fecha: new Date().toISOString(),
@@ -1639,16 +1716,25 @@ function savePendingPayload(payload) {
 }
 
 async function sendOrder() {
-  if (state.isSending) return;
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
   if (validateOrder() !== true) return;
 
-  state.isSending = true;
+  const payload = buildOrderPayload();
+
+  if (isOrderSendLocked(payload)) return;
+  lockOrderSend(payload, 6000);
+
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
+  const confirmBtn = $("#btnConfirmOrderSend");
+
   setButtonBusy(sendBtn, true, "Enviando...", "Enviar pedido");
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Enviando...";
+  }
 
   try {
-    const payload = buildOrderPayload();
     const waPhone = state.seller?.rol === "vendedor"
       ? (state.seller.wasap_report || confText("telefono_wa") || "")
       : (confText("telefono_wa") || "");
@@ -1700,10 +1786,18 @@ async function sendOrder() {
     clearCart();
     renderSelectedClient();
     renderClients();
-    state.isSending = false;
+
     setButtonBusy(sendBtn, false, "Enviando...", "Enviar pedido");
+
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Confirmar y enviar";
+    }
+
+    releaseOrderSendLock(2200);
   }
 }
+
 
 function savePendingNow() {
   if (validateOrder() !== true) return;
@@ -1904,6 +1998,7 @@ function toast(msg) {
 
 
 function openOrderConfirmModal() {
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
   if (validateOrder() !== true) return;
 
   const modal = $("#orderConfirmModal");
@@ -1967,7 +2062,7 @@ function closeOrderConfirmModal() {
 
 function confirmOrderAndSend() {
   const confirmBtn = $("#btnConfirmOrderSend");
-  if (state.isSending || confirmBtn?.disabled) return;
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil) || confirmBtn?.disabled) return;
 
   if (confirmBtn) {
     confirmBtn.disabled = true;
@@ -1984,6 +2079,8 @@ function bind() {
     if (insideCategoryBtn) {
       e.preventDefault();
       renderCategories();
+      const categoryModal = document.getElementById("categoryModal");
+      if (categoryModal) categoryModal.classList.add("front-modal-d9");
       openModal("category");
       return;
     }
