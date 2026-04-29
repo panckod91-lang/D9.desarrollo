@@ -507,6 +507,39 @@ function injectInlineQtyStylesD9() {
 }
 
 
+
+function bindInlineQtyCaptureD9() {
+  if (window.__d9InlineQtyCaptureBound) return;
+  window.__d9InlineQtyCaptureBound = true;
+
+  const handleQty = (e) => {
+    const qtyBtn = e.target.closest?.("[data-product-qty]");
+    if (!qtyBtn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+
+    const id = qtyBtn.dataset.id;
+    const action = qtyBtn.dataset.productQty;
+    if (!id) return;
+
+    if (action === "plus") updateQty(id, 1);
+    if (action === "minus") updateQty(id, -1);
+  };
+
+  document.addEventListener("click", handleQty, true);
+  document.addEventListener("pointerup", handleQty, true);
+
+  document.addEventListener("keydown", (e) => {
+    const qtyBtn = e.target.closest?.("[data-product-qty]");
+    if (!qtyBtn) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    handleQty(e);
+  }, true);
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -2300,37 +2333,7 @@ function confirmOrderAndSend() {
 }
 
 function bind() {
-
-  document.addEventListener("keydown", (e) => {
-    const qtyBtn = e.target.closest("[data-product-qty]");
-    if (!qtyBtn) return;
-    if (e.key !== "Enter" && e.key !== " ") return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const id = qtyBtn.dataset.id;
-    const action = qtyBtn.dataset.productQty;
-    if (!id) return;
-
-    if (action === "plus") updateQty(id, 1);
-    if (action === "minus") updateQty(id, -1);
-  }); // data-product-qty-keyboard-d9
-
-  document.addEventListener("click", (e) => {
-    const qtyBtn = e.target.closest("[data-product-qty]");
-    if (!qtyBtn) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const id = qtyBtn.dataset.id;
-    const action = qtyBtn.dataset.productQty;
-    if (!id) return;
-
-    if (action === "plus") updateQty(id, 1);
-    if (action === "minus") updateQty(id, -1);
-  });
+  bindInlineQtyCaptureD9();
 
   document.addEventListener("click", (e) => {
     const insideCategoryBtn = e.target.closest("#btnCategoryInsideProductModal");

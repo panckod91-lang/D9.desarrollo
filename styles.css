@@ -2406,3 +2406,10 @@ button.home-red-d9:active {
 #productModal .qty-inline-btn-d9:active{
   transform:scale(.94) !important;
 }
+
+/* D9 qty click isolation */
+.qty-inline-d9,
+.qty-inline-btn-d9{
+  touch-action:manipulation !important;
+  pointer-events:auto !important;
+}
