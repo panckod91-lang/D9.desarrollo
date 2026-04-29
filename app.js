@@ -144,8 +144,19 @@ function rowVal(row, ...keys) {
 
 function isActiveAd(row) {
   const val = rowVal(row, "activo", "active");
+
   if (val === true) return true;
-  return String(val).trim().toLowerCase() === "true";
+
+  const s = String(val).trim().toLowerCase();
+
+  return (
+    s === "true" ||
+    s === "si" ||
+    s === "sí" ||
+    s === "1" ||
+    s === "activo" ||
+    s === "yes"
+  );
 }
 
 
