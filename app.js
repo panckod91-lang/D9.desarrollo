@@ -512,6 +512,8 @@ function bindInlineQtyCaptureD9() {
   if (window.__d9InlineQtyCaptureBound) return;
   window.__d9InlineQtyCaptureBound = true;
 
+  let lastQtyTap = { id: "", action: "", time: 0 };
+
   const handleQty = (e) => {
     const qtyBtn = e.target.closest?.("[data-product-qty]");
     if (!qtyBtn) return;
@@ -522,14 +524,25 @@ function bindInlineQtyCaptureD9() {
 
     const id = qtyBtn.dataset.id;
     const action = qtyBtn.dataset.productQty;
-    if (!id) return;
+    if (!id || !action) return;
+
+    const now = Date.now();
+    if (
+      lastQtyTap.id === id &&
+      lastQtyTap.action === action &&
+      now - lastQtyTap.time < 350
+    ) {
+      return;
+    }
+
+    lastQtyTap = { id, action, time: now };
 
     if (action === "plus") updateQty(id, 1);
     if (action === "minus") updateQty(id, -1);
   };
 
+  // Usamos click en captura. Evitamos pointerup porque en mobile dispara doble junto con click.
   document.addEventListener("click", handleQty, true);
-  document.addEventListener("pointerup", handleQty, true);
 
   document.addEventListener("keydown", (e) => {
     const qtyBtn = e.target.closest?.("[data-product-qty]");

@@ -2413,3 +2413,8 @@ button.home-red-d9:active {
   touch-action:manipulation !important;
   pointer-events:auto !important;
 }
+
+/* D9 qty v12: evita doble tap fantasma */
+.qty-inline-btn-d9{
+  -webkit-tap-highlight-color: transparent !important;
+}
