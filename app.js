@@ -665,6 +665,82 @@ function injectOrderConfirmPolishD9() {
 }
 
 
+
+function injectOrderConfirmFinalRealD9() {
+  if (document.getElementById("d9-confirm-final-real-style")) return;
+  const style = document.createElement("style");
+  style.id = "d9-confirm-final-real-style";
+  style.textContent = `
+    #orderConfirmModal{
+      align-items:center !important;
+      justify-content:center !important;
+      padding:8px !important;
+    }
+    #orderConfirmModal .order-confirm-panel-d9{
+      width:calc(100vw - 24px) !important;
+      max-width:680px !important;
+      height:calc(100dvh - 28px) !important;
+      max-height:calc(100dvh - 28px) !important;
+      min-height:calc(100dvh - 28px) !important;
+      margin:0 auto !important;
+      display:flex !important;
+      flex-direction:column !important;
+      overflow:hidden !important;
+      border-radius:28px !important;
+    }
+    #orderConfirmContent.order-confirm-content-d9{
+      flex:1 1 auto !important;
+      min-height:0 !important;
+      overflow-y:auto !important;
+      padding-bottom:12px !important;
+    }
+    #orderConfirmModal .confirm-info-grid-d9{
+      display:grid !important;
+      grid-template-columns:repeat(3, minmax(0, 1fr)) !important;
+      gap:8px !important;
+    }
+    #orderConfirmModal .confirm-info-card-d9.wide{
+      grid-column:1 / -1 !important;
+    }
+    #orderConfirmModal .confirm-info-card-d9{
+      min-width:0 !important;
+      padding:10px 8px !important;
+    }
+    #orderConfirmModal .confirm-info-card-d9 span{
+      font-size:11px !important;
+      line-height:1.05 !important;
+      white-space:nowrap !important;
+    }
+    #orderConfirmModal .confirm-info-card-d9 strong{
+      font-size:16px !important;
+      line-height:1.12 !important;
+      white-space:nowrap !important;
+      overflow:hidden !important;
+      text-overflow:ellipsis !important;
+    }
+    #orderConfirmModal .confirm-info-card-d9:nth-child(4) strong{
+      font-size:15px !important;
+    }
+    #orderConfirmModal .confirm-actions-d9{
+      flex:0 0 auto !important;
+      margin-top:auto !important;
+      position:sticky !important;
+      bottom:0 !important;
+      z-index:30 !important;
+      background:#fff !important;
+      padding:10px 0 6px !important;
+      display:flex !important;
+      gap:10px !important;
+    }
+    #orderConfirmModal .confirm-actions-d9 button{
+      flex:1 1 0 !important;
+      min-width:0 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -2690,6 +2766,7 @@ function renderSellerName(el, nombre){
 }
 
 async function init() {
+  injectOrderConfirmFinalRealD9();
   injectOrderConfirmPolishD9();
   injectPriceListCleanStickyD9();
   injectCategoryChipStylesD9();

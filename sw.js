@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-offline-v11";
+const CACHE_NAME = "d9-offline-v12";
 const URLS = [
   "./",
   "./index.html",
