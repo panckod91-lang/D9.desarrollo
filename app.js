@@ -741,6 +741,36 @@ function injectOrderConfirmFinalRealD9() {
 }
 
 
+
+function injectOrderConfirmMetricsRowD9() {
+  if (document.getElementById("d9-confirm-metrics-row-style")) return;
+  const style = document.createElement("style");
+  style.id = "d9-confirm-metrics-row-style";
+  style.textContent = `
+    #orderConfirmModal .confirm-info-grid-d9{display:none !important;}
+    #orderConfirmModal .confirm-client-card-d9{
+      width:100% !important;box-sizing:border-box !important;border:1px solid rgba(23,52,84,.10) !important;background:#f7fbfe !important;border-radius:16px !important;padding:12px 14px !important;margin:0 0 10px !important;
+    }
+    #orderConfirmModal .confirm-client-card-d9 span{display:block !important;font-size:12px !important;font-weight:850 !important;color:#6f8294 !important;line-height:1.1 !important;}
+    #orderConfirmModal .confirm-client-card-d9 strong{display:block !important;font-size:18px !important;line-height:1.15 !important;color:#173454 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;margin-top:4px !important;}
+    #orderConfirmModal .confirm-client-card-d9 small{display:block !important;font-size:13px !important;color:#6f8294 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;margin-top:4px !important;}
+    #orderConfirmModal .confirm-metrics-row-d9{
+      display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:7px !important;margin:0 0 14px !important;width:100% !important;box-sizing:border-box !important;
+    }
+    #orderConfirmModal .confirm-metric-card-d9{
+      flex:1 1 0 !important;min-width:0 !important;box-sizing:border-box !important;border:1px solid rgba(23,52,84,.10) !important;background:#f7fbfe !important;border-radius:15px !important;padding:9px 7px !important;
+    }
+    #orderConfirmModal .confirm-metric-card-d9.total{
+      flex:1.5 1 0 !important;
+    }
+    #orderConfirmModal .confirm-metric-card-d9 span{display:block !important;font-size:10px !important;font-weight:850 !important;color:#6f8294 !important;line-height:1 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;}
+    #orderConfirmModal .confirm-metric-card-d9 strong{display:block !important;font-size:16px !important;line-height:1.05 !important;color:#173454 !important;font-weight:950 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;margin-top:8px !important;}
+    #orderConfirmModal .confirm-metric-card-d9.total strong{font-size:17px !important;}
+  `;
+  document.head.appendChild(style);
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -858,9 +888,7 @@ async function loadAllData() {
   state.ads = ads.filter(isActiveAd);
   state.hasLoadedData = true;
 
-  console.log(
-    `[D9] Bootstrap Apps Script OK · productos=${state.products.length} clientes=${state.clients.length} publicidad=${state.ads.length}`
-  );
+
 }
 
 
@@ -2491,21 +2519,22 @@ function openOrderConfirmModal() {
   `).join("");
 
   box.innerHTML = `
-    <div class="confirm-info-grid-d9">
-      <div class="confirm-info-card-d9 wide">
-        <span>Cliente</span>
-        <strong>${esc(clienteNombre)}</strong>
-        ${clienteExtra ? `<small>${esc(clienteExtra)}</small>` : ""}
-      </div>
-      <div class="confirm-info-card-d9">
+    <div class="confirm-client-card-d9">
+      <span>Cliente</span>
+      <strong>${esc(clienteNombre)}</strong>
+      ${clienteExtra ? `<small>${esc(clienteExtra)}</small>` : ""}
+    </div>
+
+    <div class="confirm-metrics-row-d9">
+      <div class="confirm-metric-card-d9 compact">
         <span>Productos</span>
         <strong>${productosDistintos}</strong>
       </div>
-      <div class="confirm-info-card-d9">
-        <span>Total unid.</span>
+      <div class="confirm-metric-card-d9 compact">
+        <span>Unidades</span>
         <strong>${unidadesTotales}</strong>
       </div>
-      <div class="confirm-info-card-d9">
+      <div class="confirm-metric-card-d9 total">
         <span>Total</span>
         <strong>${money(payload.total)}</strong>
       </div>
@@ -2766,6 +2795,7 @@ function renderSellerName(el, nombre){
 }
 
 async function init() {
+  injectOrderConfirmMetricsRowD9();
   injectOrderConfirmFinalRealD9();
   injectOrderConfirmPolishD9();
   injectPriceListCleanStickyD9();
