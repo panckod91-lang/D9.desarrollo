@@ -2459,3 +2459,91 @@ button.home-red-d9:active {
 #view-prices .history-head-d9{
   z-index:90 !important;
 }
+
+
+/* === D9 pedidos confirmación pulida === */
+.preview-box.compact-preview{
+  display:none !important;
+}
+
+#orderConfirmModal{
+  align-items:center !important;
+  justify-content:center !important;
+  padding:8px !important;
+}
+
+#orderConfirmModal .order-confirm-panel-d9{
+  width:calc(100vw - 24px) !important;
+  max-width:680px !important;
+  height:calc(100dvh - 28px) !important;
+  max-height:calc(100dvh - 28px) !important;
+  min-height:calc(100dvh - 28px) !important;
+  margin:0 auto !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden !important;
+  border-radius:28px !important;
+}
+
+#orderConfirmModal .modal-head-row{
+  flex:0 0 auto !important;
+  position:relative !important;
+  display:flex !important;
+  justify-content:center !important;
+  text-align:center !important;
+  padding:18px 64px 10px !important;
+}
+
+#orderConfirmModal .modal-head-row > div{
+  width:100% !important;
+}
+
+#orderConfirmModal .modal-head-row h3{
+  margin:0 !important;
+  font-size:25px !important;
+  line-height:1.1 !important;
+  font-weight:950 !important;
+  color:#173454 !important;
+}
+
+#orderConfirmModal .modal-head-row .modal-text{
+  margin:6px 0 0 !important;
+  font-size:14px !important;
+  line-height:1.25 !important;
+}
+
+#orderConfirmModal .modal-head-row .ghost-x{
+  position:absolute !important;
+  top:14px !important;
+  right:18px !important;
+}
+
+#orderConfirmContent.order-confirm-content-d9{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  overflow-y:auto !important;
+  padding-bottom:12px !important;
+}
+
+#orderConfirmModal .confirm-actions-d9{
+  flex:0 0 auto !important;
+  padding-top:10px !important;
+}
+
+#orderConfirmModal .confirm-info-grid-d9{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:10px !important;
+}
+
+#orderConfirmModal .confirm-info-card-d9.wide{
+  grid-column:1 / -1 !important;
+}
+
+#orderConfirmModal .confirm-info-card-d9 strong{
+  line-height:1.15 !important;
+}
+
+#orderConfirmModal .confirm-products-d9{
+  padding-bottom:8px !important;
+}
