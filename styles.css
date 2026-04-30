@@ -2636,3 +2636,36 @@ button.home-red-d9:active {
 #orderConfirmModal .confirm-products-d9{
   padding-bottom:8px !important;
 }
+/* === RESUMEN EN UNA SOLA LÍNEA (productos + unidades + total) === */
+
+#orderConfirmModal .confirm-info-grid-d9{
+  display:grid !important;
+  grid-template-columns: 1fr 1fr 1.2fr !important; /* total un poco más grande */
+  gap:6px !important;
+}
+
+/* todos compactos */
+#orderConfirmModal .confirm-info-card-d9{
+  min-width:0 !important;
+  padding:8px 6px !important;
+}
+
+/* etiquetas (Productos / Total unid / Total) */
+#orderConfirmModal .confirm-info-card-d9 span{
+  font-size:10px !important;
+  white-space:nowrap !important;
+}
+
+/* valores */
+#orderConfirmModal .confirm-info-card-d9 strong{
+  font-size:15px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+
+/* el TOTAL más protagonista */
+#orderConfirmModal .confirm-info-card-d9:last-child strong{
+  font-size:17px !important;
+  font-weight:700 !important;
+}
