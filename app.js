@@ -763,8 +763,8 @@ function injectOrderConfirmMetricsRowD9() {
     #orderConfirmModal .confirm-metric-card-d9.total{
       flex:1.5 1 0 !important;
     }
-    #orderConfirmModal .confirm-metric-card-d9 span{display:block !important;font-size:10px !important;font-weight:850 !important;color:#6f8294 !important;line-height:1 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;}
-    #orderConfirmModal .confirm-metric-card-d9 strong{display:block !important;font-size:16px !important;line-height:1.05 !important;color:#173454 !important;font-weight:950 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;margin-top:8px !important;}
+    #orderConfirmModal .confirm-metric-card-d9 span{display:block !important;font-size:10px !important;font-weight:850 !important;color:#6f8294 !important;line-height:1 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;text-align:right !important;}
+    #orderConfirmModal .confirm-metric-card-d9 strong{display:block !important;font-size:16px !important;line-height:1.05 !important;color:#173454 !important;font-weight:950 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;margin-top:8px !important;text-align:right !important;}
     #orderConfirmModal .confirm-metric-card-d9.total strong{font-size:17px !important;}
   `;
   document.head.appendChild(style);

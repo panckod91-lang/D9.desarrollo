@@ -1946,7 +1946,6 @@ button.home-red-d9:active {
 .order-confirm-content-d9 {
   display: grid;
   gap: 12px;
-  max-height: 58vh;
   overflow-y: auto;
   padding-bottom: 4px;
 }
@@ -2715,6 +2714,7 @@ button.home-red-d9:active {
   white-space:nowrap !important;
   overflow:hidden !important;
   text-overflow:ellipsis !important;
+  text-align:right !important;
 }
 
 #orderConfirmModal .confirm-metric-card-d9 strong{
@@ -2727,6 +2727,7 @@ button.home-red-d9:active {
   overflow:hidden !important;
   text-overflow:ellipsis !important;
   margin-top:8px !important;
+  text-align:right !important;
 }
 
 #orderConfirmModal .confirm-metric-card-d9.total strong{
