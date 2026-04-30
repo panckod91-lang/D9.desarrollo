@@ -553,6 +553,45 @@ function bindInlineQtyCaptureD9() {
 }
 
 
+
+function injectPriceListCleanStickyD9() {
+  if (document.getElementById("d9-price-clean-sticky-v2")) return;
+  const style = document.createElement("style");
+  style.id = "d9-price-clean-sticky-v2";
+  style.textContent = `
+    #priceListInfo,
+    .price-info{
+      display:none !important;
+      height:0 !important;
+      margin:0 !important;
+      padding:0 !important;
+      overflow:hidden !important;
+    }
+    #view-prices .card.section-block{
+      overflow:visible !important;
+    }
+    #view-prices .price-sticky-d9{
+      position:sticky !important;
+      top:86px !important;
+      z-index:80 !important;
+      background:rgba(255,255,255,.98) !important;
+      backdrop-filter:blur(10px) !important;
+      -webkit-backdrop-filter:blur(10px) !important;
+      padding:0 0 10px !important;
+      margin:0 0 12px !important;
+      border-radius:0 0 20px 20px !important;
+    }
+    #view-prices .price-sticky-d9 #priceSearch{
+      background:#fff !important;
+    }
+    #view-prices .history-head-d9{
+      z-index:90 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -1525,11 +1564,13 @@ function renderPriceListControls() {
   const info = $("#priceListInfo");
   const select = $("#priceListSelect");
   if (!modeBox || !info || !select) return;
+  info.textContent = "";
+  info.classList.add("hidden"); // D9 hide price list info
 
   if (!state.seller) {
     state.activePriceList = "lista_1";
     modeBox.classList.add("hidden");
-    info.textContent = "Consulta general de precios.";
+    info.textContent = "";
     renderPriceCategoryChips();
     return;
   }
@@ -1537,10 +1578,10 @@ function renderPriceListControls() {
   if (state.seller.rol === "vendedor") {
     modeBox.classList.remove("hidden");
     select.value = getActivePriceList();
-    info.textContent = `Estás viendo ${priceLabel(getActivePriceList())}.`;
+    info.textContent = "";
   } else {
     modeBox.classList.add("hidden");
-    info.textContent = "Estás viendo tus precios asignados.";
+    info.textContent = "";
   }
 
   renderPriceCategoryChips();
@@ -2575,6 +2616,7 @@ function renderSellerName(el, nombre){
 }
 
 async function init() {
+  injectPriceListCleanStickyD9();
   injectCategoryChipStylesD9();
   injectProductModalMicroStylesD9();
   injectInlineQtyStylesD9();

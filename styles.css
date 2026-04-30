@@ -2424,3 +2424,38 @@ button.home-red-d9:active {
 #occasionalPriceWrap{
   display:none !important;
 }
+
+
+/* === D9 Lista de precios v2: sin referencia de lista + buscador fijo === */
+#priceListInfo,
+.price-info{
+  display:none !important;
+  height:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  overflow:hidden !important;
+}
+
+#view-prices .card.section-block{
+  overflow:visible !important;
+}
+
+#view-prices .price-sticky-d9{
+  position:sticky !important;
+  top:86px !important;
+  z-index:80 !important;
+  background:rgba(255,255,255,.98) !important;
+  backdrop-filter:blur(10px) !important;
+  -webkit-backdrop-filter:blur(10px) !important;
+  padding:0 0 10px !important;
+  margin:0 0 12px !important;
+  border-radius:0 0 20px 20px !important;
+}
+
+#view-prices .price-sticky-d9 #priceSearch{
+  background:#fff !important;
+}
+
+#view-prices .history-head-d9{
+  z-index:90 !important;
+}
