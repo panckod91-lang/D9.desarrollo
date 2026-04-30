@@ -2051,8 +2051,39 @@ function releaseOrderSendLock(delayMs = 1800) {
 }
 
 
+
+function generarPedidoIdD9(vendedorId) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${vendedorId || "0"}-${code}`;
+}
+
+function getDraftPedidoIdD9(vendedorId) {
+  const key = "d9_draft_pedido_id";
+  let pedidoId = localStorage.getItem(key);
+
+  if (!pedidoId) {
+    pedidoId = generarPedidoIdD9(vendedorId);
+    localStorage.setItem(key, pedidoId);
+  }
+
+  return pedidoId;
+}
+
+function clearDraftPedidoIdD9() {
+  localStorage.removeItem("d9_draft_pedido_id");
+}
+
+
 function buildOrderPayload() {
+  const vendedorId = state.seller?.id || "0";
+  const pedidoId = getDraftPedidoIdD9(vendedorId);
+
   return {
+    pedido_id: pedidoId,
     fecha: new Date().toISOString(),
     vendedor: state.seller,
     cliente: state.selectedClient,
@@ -2071,12 +2102,13 @@ function validateOrder() {
 function buildWebhookPayload(payload) {
   const cliente = payload?.cliente || {};
   const clienteTexto = [
-  cliente.nombre_real || cliente.nombre || "",
-  cliente.telefono || "",
-  cliente.direccion || (cliente.ciudad || "")
-].filter(Boolean).join(" | ");
+    cliente.nombre_real || cliente.nombre || "",
+    cliente.telefono || "",
+    cliente.direccion || (cliente.ciudad || "")
+  ].filter(Boolean).join(" | ");
 
   return {
+    pedido_id: payload?.pedido_id || payload?.pedidoId || "",
     vendedor_id: payload?.vendedor?.id || "",
     vendedor: payload?.vendedor?.nombre || "",
     cliente: clienteTexto,
@@ -2192,6 +2224,7 @@ async function sendOrder() {
     if (!navigator.onLine) {
       savePendingPayload(payload);
       saveHistory(payload, "pendiente", "Sin conexión");
+      clearDraftPedidoIdD9();
       renderPendingBadge();
       toast("Sin internet. Pedido guardado pendiente.");
       if (pendingBtn) pulseSuccess(pendingBtn, "Pendiente guardado", "Se enviará al recuperar conexión");
@@ -2211,7 +2244,8 @@ async function sendOrder() {
           renderPendingBadge();
           console.warn("Pedido pendiente:", res?.error);
         } else {
-          saveHistory(payload, "ok", "Enviado correctamente");
+          saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
+          clearDraftPedidoIdD9();
           renderPendingBadge();
         }
       })
@@ -2253,6 +2287,7 @@ function savePendingNow() {
   const payload = buildOrderPayload();
   savePendingPayload(payload);
   saveHistory(payload, "pendiente");
+  clearDraftPedidoIdD9();
   if (state.seller?.rol === "cliente") {
     applyUserContext();
   } else if (!state.seller) {
