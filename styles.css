@@ -507,25 +507,6 @@ body{padding:10px 12px 16px;}
 .live-dot-vnext{width:11px;height:11px;box-shadow:0 0 0 5px rgba(54,180,255,.13);}
 .led-marquee-vnext{font-size:.89rem;gap:14px;}
 .led-end-vnext{font-size:1rem;}
-@media (max-width:420px){
-  body{padding:8px 10px 14px;}
-  .hero-header-vnext{padding:11px 12px;}
-  .logo-badge-vnext{width:58px;height:58px;}
-  .logo-badge-vnext img{width:44px;height:44px;}
-  .brand-copy-vnext h1{font-size:1.78rem;}
-  .brand-copy-vnext p{font-size:.9rem;}
-  .status-pill-vnext{padding:9px 13px;font-size:.93rem;min-height:44px;}
-  .cta-main-vnext{padding:15px 16px;}
-  .cta-icon-vnext{width:52px;height:52px;font-size:1.55rem;}
-  .cta-copy-vnext strong{font-size:1.58rem;}
-  .cta-copy-vnext small{font-size:.9rem;}
-  .promo-card-vnext{min-height:166px;}
-  .action-card-vnext{min-height:116px;padding:13px 38px 13px 13px;}
-  .icon-wrap-vnext{width:44px;height:44px;}
-  .title-group-vnext strong{font-size:.92rem;}
-  .title-group-vnext small{font-size:.75rem;}
-  .pending-count-vnext{right:38px;top:11px;}
-}
 
 
 /* ===== Polish v4: top bar + grid only ===== */
@@ -648,24 +629,7 @@ body{padding:10px 12px 16px;}
 }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 420px){
 
-  .status-row-vnext{
-    gap:10px;
-    margin:0 4px 14px;
-  }
-
-  .status-pill-small-vnext{
-    padding:6px 10px;
-    font-size:.75rem;
-  }
-
-  .status-pill-user-vnext{
-    width:min(100%, 52vw);
-    font-size:.9rem;
-  }
-
-}
 .pendingBadge, #pendingBadge{display:none !important}
 
 .cta-main-vnext{
@@ -789,23 +753,7 @@ body{padding:10px 12px 16px;}
 .led-live-vnext{font-size:.96rem}
 .led-marquee-vnext{font-size:.93rem}
 
-@media (max-width: 420px){
-  .status-row-vnext{
-    margin-bottom:14px;
-    grid-template-columns:auto 1fr auto;
-    gap:8px;
-  }
 
-  .status-pill-small-vnext{
-    padding:6px 10px;
-    font-size:.72rem;
-  }
-
-  .status-pill-user-vnext{
-    width:min(100%, 52vw);
-    font-size:.86rem;
-  }
-}
 .ticker-track{
   display:flex;
   align-items:center;
@@ -831,13 +779,6 @@ body{padding:10px 12px 16px;}
 @keyframes tickerMove{
   from { transform: translateX(0); }
   to   { transform: translateX(calc(-1 * var(--move))); }
-}
-
-
-@media (max-width: 420px){
-  .status-row-vnext{margin-bottom:14px}
-  .status-pill-small-vnext{padding:0 9px;font-size:.7rem}
-  .status-pill-user-vnext{max-width:46vw;font-size:.86rem}
 }
 
 
@@ -881,15 +822,7 @@ body{padding:10px 12px 16px;}
 }
 
 /* Responsive: mantener altura uniforme en mobile chico */
-@media (max-width: 420px) {
-  .status-pill-small-vnext,
-  .status-pill-user-vnext {
-    min-height: 44px;
-    height: 44px;
-    padding: 0 12px;
-    font-size: .86rem;
-  }
-}
+
 
 /* ===== FIX FINAL BARRA ESTADO - NO SOLAPAR ===== */
 .status-row-vnext{
@@ -994,34 +927,7 @@ body{padding:10px 12px 16px;}
   flex:0 0 auto !important;
 }
 
-@media (max-width:420px){
-  .status-row-vnext{
-    column-gap:12px !important;
-    margin:0 4px 14px !important;
-  }
 
-  .status-pill-vnext{
-    height:44px !important;
-    min-height:44px !important;
-  }
-
-  .status-pill-small-vnext{
-    padding:0 10px !important;
-    font-size:.78rem !important;
-  }
-
-  #sellerBadge.status-pill-user-vnext,
-  #sellerBadge{
-    max-width:100% !important;
-    padding:0 10px !important;
-    font-size:.76rem !important;
-    gap:6px !important;
-  }
-
-  #sellerBadge::before{
-    font-size:.95rem !important;
-  }
-}
 /* Evitar selección de texto / búsqueda accidental en mobile */
 body,
 button,
@@ -1087,7 +993,6 @@ select {
   -webkit-user-select: text;
   user-select: text;
 }
-
 
 
 /* ===== HEADERS INTERNOS D9 (historial / pedido / precios) ===== */
@@ -1165,32 +1070,6 @@ body:has(#view-history.active) .status-row-vnext{
   text-align:center !important;
 }
 
-@media (max-width:420px){
-  .history-head-d9{
-    grid-template-columns:48px 1fr auto !important;
-    gap:10px !important;
-    padding:9px 10px !important;
-    border-radius:22px !important;
-  }
-  .history-home-d9{
-    width:48px !important;
-    height:48px !important;
-    min-height:48px !important;
-    font-size:1.15rem !important;
-  }
-  .history-title-d9 h2{
-    font-size:1.45rem !important;
-  }
-  .history-title-d9 .subhead{
-    font-size:.84rem !important;
-    max-width:210px !important;
-  }
-  .history-actions-d9 .link-btn{
-    min-width:82px !important;
-    padding:5px 11px !important;
-    font-size:.8rem !important;
-  }
-}
 
 /* ============================================================
    BANNER D9 LIMPIO FINAL
@@ -1331,49 +1210,6 @@ body:has(#view-history.active) .status-row-vnext{
   box-shadow:none !important;
 }
 
-@media (max-width:420px){
-  #bannerWrap.promo-card-vnext{
-    height:168px !important;
-    min-height:168px !important;
-    max-height:168px !important;
-  }
-
-  #bannerWrap.banner-mode-product .banner-product-d9{
-    padding:11px 9px !important;
-    gap:5px !important;
-  }
-
-  #bannerWrap.banner-mode-product .banner-copy-d9{
-    flex-basis:24% !important;
-    max-width:24% !important;
-    padding:0 4px !important;
-    align-items:center !important;
-    text-align:center !important;
-  }
-
-  #bannerWrap.banner-mode-product .banner-kicker-vnext{
-    font-size:.72rem !important;
-    padding:5px 8px !important;
-  }
-
-  #bannerWrap.banner-mode-product .banner-title-vnext{
-    font-size:1.05rem !important;
-  }
-
-  #bannerWrap.banner-mode-product .banner-line-vnext{
-    font-size:.86rem !important;
-  }
-
-  #bannerWrap.banner-mode-product .banner-thumb-d9{
-    border-radius:16px !important;
-    clip-path:inset(0 round 16px) !important;
-  }
-
-  #bannerWrap.banner-mode-full .banner-full-img-d9{
-    border-radius:20px !important;
-    clip-path:inset(0 round 20px) !important;
-  }
-}
 
 /* ============================================================
    CARRUSEL BANNER D9
@@ -1739,7 +1575,6 @@ button.home-red-d9:active {
   align-items: flex-start;
   height: 100%;
 }
-
 
 
 /* D9 - Modal productos centrado + buscador fijo + lista scrolleable */
@@ -2738,4 +2573,161 @@ button.home-red-d9:active {
 
 #orderConfirmModal .confirm-section-title-d9{
   margin-top:2px !important;
+}
+
+@media (max-width:420px){
+body{padding:8px 10px 14px;}
+  .hero-header-vnext{padding:11px 12px;}
+  .logo-badge-vnext{width:58px;height:58px;}
+  .logo-badge-vnext img{width:44px;height:44px;}
+  .brand-copy-vnext h1{font-size:1.78rem;}
+  .brand-copy-vnext p{font-size:.9rem;}
+  .status-pill-vnext{padding:9px 13px;font-size:.93rem;min-height:44px;}
+  .cta-main-vnext{padding:15px 16px;}
+  .cta-icon-vnext{width:52px;height:52px;font-size:1.55rem;}
+  .cta-copy-vnext strong{font-size:1.58rem;}
+  .cta-copy-vnext small{font-size:.9rem;}
+  .promo-card-vnext{min-height:166px;}
+  .action-card-vnext{min-height:116px;padding:13px 38px 13px 13px;}
+  .icon-wrap-vnext{width:44px;height:44px;}
+  .title-group-vnext strong{font-size:.92rem;}
+  .title-group-vnext small{font-size:.75rem;}
+  .pending-count-vnext{right:38px;top:11px;}
+
+.status-row-vnext{
+    gap:10px;
+    margin:0 4px 14px;
+  }
+
+  .status-pill-small-vnext{
+    padding:6px 10px;
+    font-size:.75rem;
+  }
+
+  .status-pill-user-vnext{
+    width:min(100%, 52vw);
+    font-size:.9rem;
+  }
+
+.status-row-vnext{
+    margin-bottom:14px;
+    grid-template-columns:auto 1fr auto;
+    gap:8px;
+  }
+
+  .status-pill-small-vnext{
+    padding:6px 10px;
+    font-size:.72rem;
+  }
+
+  .status-pill-user-vnext{
+    width:min(100%, 52vw);
+    font-size:.86rem;
+  }
+
+.status-row-vnext{margin-bottom:14px}
+  .status-pill-small-vnext{padding:0 9px;font-size:.7rem}
+  .status-pill-user-vnext{max-width:46vw;font-size:.86rem}
+
+.status-pill-small-vnext,
+  .status-pill-user-vnext {
+    min-height: 44px;
+    height: 44px;
+    padding: 0 12px;
+    font-size: .86rem;
+  }
+
+.status-row-vnext{
+    column-gap:12px !important;
+    margin:0 4px 14px !important;
+  }
+
+  .status-pill-vnext{
+    height:44px !important;
+    min-height:44px !important;
+  }
+
+  .status-pill-small-vnext{
+    padding:0 10px !important;
+    font-size:.78rem !important;
+  }
+
+  #sellerBadge.status-pill-user-vnext,
+  #sellerBadge{
+    max-width:100% !important;
+    padding:0 10px !important;
+    font-size:.76rem !important;
+    gap:6px !important;
+  }
+
+  #sellerBadge::before{
+    font-size:.95rem !important;
+  }
+
+.history-head-d9{
+    grid-template-columns:48px 1fr auto !important;
+    gap:10px !important;
+    padding:9px 10px !important;
+    border-radius:22px !important;
+  }
+  .history-home-d9{
+    width:48px !important;
+    height:48px !important;
+    min-height:48px !important;
+    font-size:1.15rem !important;
+  }
+  .history-title-d9 h2{
+    font-size:1.45rem !important;
+  }
+  .history-title-d9 .subhead{
+    font-size:.84rem !important;
+    max-width:210px !important;
+  }
+  .history-actions-d9 .link-btn{
+    min-width:82px !important;
+    padding:5px 11px !important;
+    font-size:.8rem !important;
+  }
+
+#bannerWrap.promo-card-vnext{
+    height:168px !important;
+    min-height:168px !important;
+    max-height:168px !important;
+  }
+
+  #bannerWrap.banner-mode-product .banner-product-d9{
+    padding:11px 9px !important;
+    gap:5px !important;
+  }
+
+  #bannerWrap.banner-mode-product .banner-copy-d9{
+    flex-basis:24% !important;
+    max-width:24% !important;
+    padding:0 4px !important;
+    align-items:center !important;
+    text-align:center !important;
+  }
+
+  #bannerWrap.banner-mode-product .banner-kicker-vnext{
+    font-size:.72rem !important;
+    padding:5px 8px !important;
+  }
+
+  #bannerWrap.banner-mode-product .banner-title-vnext{
+    font-size:1.05rem !important;
+  }
+
+  #bannerWrap.banner-mode-product .banner-line-vnext{
+    font-size:.86rem !important;
+  }
+
+  #bannerWrap.banner-mode-product .banner-thumb-d9{
+    border-radius:16px !important;
+    clip-path:inset(0 round 16px) !important;
+  }
+
+  #bannerWrap.banner-mode-full .banner-full-img-d9{
+    border-radius:20px !important;
+    clip-path:inset(0 round 20px) !important;
+  }
 }
