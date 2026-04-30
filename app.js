@@ -1278,7 +1278,7 @@ function logoutSeller() {
   syncSessionUI();
   renderSellerBadge();
   applyUserContext();
-  renderAll();
+  renderAll(); togglePriceListForGuestD9();
   closeLogin();
   showView("home");
   toast("Sesión cerrada.");
@@ -1294,7 +1294,7 @@ function loginSeller() {
   saveJSON(STORAGE_KEYS.seller, { id: seller.id, nombre: seller.nombre, usuario: seller.usuario });
   applyUserContext();
   syncSessionUI();
-  renderAll();
+  renderAll(); togglePriceListForGuestD9();
   closeLogin();
   showView("home");
   toast(`Hola, ${seller.nombre}`);
@@ -2506,8 +2506,8 @@ function bind() {
     }, { passive: true });
   }
 
-  window.addEventListener("online", async () => { renderNetwork(); try { await loadAllData(); persistCacheState(); renderAll(); } catch (e) { console.warn(e); } syncPending(); });
-  window.addEventListener("offline", () => { renderNetwork(); renderAll(); });
+  window.addEventListener("online", async () => { renderNetwork(); try { await loadAllData(); persistCacheState(); renderAll(); togglePriceListForGuestD9(); } catch (e) { console.warn(e); } syncPending(); });
+  window.addEventListener("offline", () => { renderNetwork(); renderAll(); togglePriceListForGuestD9(); });
   window.addEventListener("pageshow", () => { resetTransientUI(); renderQuickLabels(); renderCart(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resetTransientUI(); });
 }
@@ -2582,7 +2582,7 @@ async function init() {
   hydrateCacheState();
   hydrateGuestClient();
   hydrateSeller();
-  renderAll();
+  renderAll(); togglePriceListForGuestD9();
   renderNetwork();
   await registerServiceWorker();
 
@@ -2595,7 +2595,7 @@ async function init() {
     persistCacheState();
     hydrateGuestClient();
     hydrateSeller();
-    renderAll();
+    renderAll(); togglePriceListForGuestD9();
     renderNetwork();
     syncPending();
   } catch (error) {
@@ -2620,3 +2620,15 @@ document.addEventListener("click", (e) => {
 
 });
 init();
+
+
+// D9: ocultar lista de precios en cliente ocasional
+function togglePriceListForGuestD9(){
+  const el = document.querySelector('[data-price-list-selector]');
+  if(!el) return;
+  if(state.isGuestClient){
+    el.style.display = 'none';
+  }else{
+    el.style.display = '';
+  }
+}
