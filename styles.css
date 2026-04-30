@@ -1946,6 +1946,7 @@ button.home-red-d9:active {
 .order-confirm-content-d9 {
   display: grid;
   gap: 12px;
+  align-content: start;
   overflow-y: auto;
   padding-bottom: 4px;
 }
@@ -2649,7 +2650,7 @@ button.home-red-d9:active {
   background:#f7fbfe !important;
   border-radius:16px !important;
   padding:12px 14px !important;
-  margin:0 0 10px !important;
+  margin:0 !important;
 }
 
 #orderConfirmModal .confirm-client-card-d9 span{
@@ -2694,11 +2695,12 @@ button.home-red-d9:active {
 #orderConfirmModal .confirm-metric-card-d9{
   flex:1 1 0 !important;
   min-width:0 !important;
+  height:72px !important;
   box-sizing:border-box !important;
   border:1px solid rgba(23,52,84,.10) !important;
   background:#f7fbfe !important;
   border-radius:15px !important;
-  padding:9px 7px !important;
+  padding:9px 10px !important;
 }
 
 #orderConfirmModal .confirm-metric-card-d9.total{

@@ -758,7 +758,7 @@ function injectOrderConfirmMetricsRowD9() {
       display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:7px !important;margin:0 0 14px !important;width:100% !important;box-sizing:border-box !important;
     }
     #orderConfirmModal .confirm-metric-card-d9{
-      flex:1 1 0 !important;min-width:0 !important;box-sizing:border-box !important;border:1px solid rgba(23,52,84,.10) !important;background:#f7fbfe !important;border-radius:15px !important;padding:9px 7px !important;
+      flex:1 1 0 !important;min-width:0 !important;height:72px !important;box-sizing:border-box !important;border:1px solid rgba(23,52,84,.10) !important;background:#f7fbfe !important;border-radius:15px !important;padding:9px 10px !important;
     }
     #orderConfirmModal .confirm-metric-card-d9.total{
       flex:1.5 1 0 !important;
