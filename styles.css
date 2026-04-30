@@ -2547,3 +2547,43 @@ button.home-red-d9:active {
 #orderConfirmModal .confirm-products-d9{
   padding-bottom:8px !important;
 }
+
+
+/* === D9 confirm modal final polish === */
+#orderConfirmModal .confirm-info-grid-d9{
+  display:flex !important;
+  gap:8px !important;
+}
+
+#orderConfirmModal .confirm-info-card-d9{
+  flex:1 !important;
+  min-width:0 !important;
+  padding:10px !important;
+}
+
+#orderConfirmModal .confirm-info-card-d9 span{
+  font-size:12px !important;
+}
+
+#orderConfirmModal .confirm-info-card-d9 strong{
+  font-size:16px !important;
+}
+
+#orderConfirmModal .order-confirm-content-d9{
+  flex:1 !important;
+  overflow-y:auto !important;
+}
+
+#orderConfirmModal .confirm-actions-d9{
+  position:sticky !important;
+  bottom:0 !important;
+  background:#fff !important;
+  padding-top:10px !important;
+  padding-bottom:6px !important;
+  display:flex !important;
+  gap:10px !important;
+}
+
+#orderConfirmModal .confirm-actions-d9 button{
+  flex:1 !important;
+}
