@@ -1278,7 +1278,7 @@ function logoutSeller() {
   syncSessionUI();
   renderSellerBadge();
   applyUserContext();
-  renderAll(); togglePriceListForGuestD9();
+  renderAll();
   closeLogin();
   showView("home");
   toast("Sesión cerrada.");
@@ -1294,7 +1294,7 @@ function loginSeller() {
   saveJSON(STORAGE_KEYS.seller, { id: seller.id, nombre: seller.nombre, usuario: seller.usuario });
   applyUserContext();
   syncSessionUI();
-  renderAll(); togglePriceListForGuestD9();
+  renderAll();
   closeLogin();
   showView("home");
   toast(`Hola, ${seller.nombre}`);
@@ -1469,7 +1469,8 @@ function openOccasionalClientModal() {
   const priceField = $("#occasionalPriceList");
   const priceWrap = $("#occasionalPriceWrap");
   if (priceField) priceField.value = getActivePriceList() || "lista_1";
-  if (priceWrap) priceWrap.classList.toggle("hidden", !state.seller || state.seller?.rol !== "vendedor");
+  // D9: cliente ocasional siempre usa lista_1 por defecto; no se muestra selector de lista.
+  if (priceWrap) priceWrap.classList.add("hidden");
   closeModal("client");
   openModal("occasionalClient");
 }
@@ -1479,7 +1480,7 @@ function saveOccasionalClient() {
   const telefono = $("#occasionalPhone").value.trim();
   const direccion = $("#occasionalAddress").value.trim();
   const ciudad = $("#occasionalCity").value.trim();
-  const lista = !state.seller ? "lista_1" : ($("#occasionalPriceList").value || "lista_1");
+  const lista = "lista_1";
 
   if (!nombre) return toast("Cargá al menos el nombre del cliente.");
 
@@ -2506,8 +2507,8 @@ function bind() {
     }, { passive: true });
   }
 
-  window.addEventListener("online", async () => { renderNetwork(); try { await loadAllData(); persistCacheState(); renderAll(); togglePriceListForGuestD9(); } catch (e) { console.warn(e); } syncPending(); });
-  window.addEventListener("offline", () => { renderNetwork(); renderAll(); togglePriceListForGuestD9(); });
+  window.addEventListener("online", async () => { renderNetwork(); try { await loadAllData(); persistCacheState(); renderAll(); } catch (e) { console.warn(e); } syncPending(); });
+  window.addEventListener("offline", () => { renderNetwork(); renderAll(); });
   window.addEventListener("pageshow", () => { resetTransientUI(); renderQuickLabels(); renderCart(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) resetTransientUI(); });
 }
@@ -2582,7 +2583,7 @@ async function init() {
   hydrateCacheState();
   hydrateGuestClient();
   hydrateSeller();
-  renderAll(); togglePriceListForGuestD9();
+  renderAll();
   renderNetwork();
   await registerServiceWorker();
 
@@ -2595,7 +2596,7 @@ async function init() {
     persistCacheState();
     hydrateGuestClient();
     hydrateSeller();
-    renderAll(); togglePriceListForGuestD9();
+    renderAll();
     renderNetwork();
     syncPending();
   } catch (error) {
@@ -2620,15 +2621,3 @@ document.addEventListener("click", (e) => {
 
 });
 init();
-
-
-// D9: ocultar lista de precios en cliente ocasional
-function togglePriceListForGuestD9(){
-  const el = document.querySelector('[data-price-list-selector]');
-  if(!el) return;
-  if(state.isGuestClient){
-    el.style.display = 'none';
-  }else{
-    el.style.display = '';
-  }
-}

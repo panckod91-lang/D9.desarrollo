@@ -2418,3 +2418,9 @@ button.home-red-d9:active {
 .qty-inline-btn-d9{
   -webkit-tap-highlight-color: transparent !important;
 }
+
+
+/* D9: ocultar lista de precios en cliente ocasional */
+#occasionalPriceWrap{
+  display:none !important;
+}
