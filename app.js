@@ -1626,7 +1626,7 @@ function renderPriceProducts() {
       </div>
       <div class="price-row-side">
         <strong>${money(productPrice(p))}</strong>
-        ${state.seller?.rol === "vendedor" ? `<div class="mini-text">${priceLabel(getActivePriceList())}</div>` : ``}
+
       </div>
     </div>
   `).join("");
