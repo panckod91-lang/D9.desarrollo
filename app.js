@@ -2216,9 +2216,15 @@ async function sendOrder() {
   }
 
   try {
+    const defaultWa =
+      confText("telefono_wa") ||
+      confText("wasapp") ||
+      confText("whatsapp") ||
+      "";
+
     const waPhone = state.seller?.rol === "vendedor"
-      ? (state.seller.wasap_report || confText("telefono_wa") || "")
-      : (confText("telefono_wa") || "");
+      ? (state.seller.wasap_report || defaultWa)
+      : defaultWa;
     const waText = generateMessageText(payload);
 
     if (!navigator.onLine) {
@@ -2232,7 +2238,7 @@ async function sendOrder() {
     }
 
     if (!openWhatsApp(waPhone, waText)) {
-      toast("Falta telefono_wa en confi.");
+      toast("Falta telefono_wa / wasapp en confi.");
       return;
     }
 
