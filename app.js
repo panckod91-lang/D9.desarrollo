@@ -802,6 +802,116 @@ function safeRenderAfterBackgroundTaskD9() {
 }
 
 
+
+function enableTickerTouchD9() {
+  if (window.__d9TickerTouchEnabled) return;
+  window.__d9TickerTouchEnabled = true;
+
+  const bind = () => {
+    const wrap =
+      document.querySelector(".led-marquee-wrap-vnext") ||
+      document.querySelector(".ticker-wrap") ||
+      document.querySelector(".ticker-container");
+
+    const track =
+      document.querySelector(".ticker-track") ||
+      document.querySelector(".led-marquee-vnext") ||
+      document.querySelector("#tickerTrack");
+
+    if (!wrap || !track || track.dataset.touchBoundD9 === "true") return;
+
+    track.dataset.touchBoundD9 = "true";
+
+    let startX = 0;
+    let baseX = 0;
+    let currentX = 0;
+    let dragging = false;
+    let resumeTimer = null;
+
+    const getTranslateX = () => {
+      const transform = window.getComputedStyle(track).transform;
+      if (!transform || transform === "none") return 0;
+
+      const match = transform.match(/matrix\(([^)]+)\)/);
+      if (match) {
+        const parts = match[1].split(",").map(v => Number(v.trim()));
+        return Number.isFinite(parts[4]) ? parts[4] : 0;
+      }
+
+      const match3d = transform.match(/matrix3d\(([^)]+)\)/);
+      if (match3d) {
+        const parts = match3d[1].split(",").map(v => Number(v.trim()));
+        return Number.isFinite(parts[12]) ? parts[12] : 0;
+      }
+
+      return 0;
+    };
+
+    const pauseAuto = () => {
+      clearTimeout(resumeTimer);
+      track.style.animationPlayState = "paused";
+      track.style.webkitAnimationPlayState = "paused";
+    };
+
+    const resumeAuto = () => {
+      clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => {
+        track.style.transition = "transform .25s ease";
+        track.style.transform = "";
+        track.style.animationPlayState = "running";
+        track.style.webkitAnimationPlayState = "running";
+
+        setTimeout(() => {
+          track.style.transition = "";
+        }, 260);
+      }, 1200);
+    };
+
+    const onPointerDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+
+      dragging = true;
+      startX = e.clientX;
+      baseX = getTranslateX();
+      currentX = baseX;
+
+      pauseAuto();
+      track.style.transition = "none";
+
+      try { wrap.setPointerCapture?.(e.pointerId); } catch (_) {}
+    };
+
+    const onPointerMove = (e) => {
+      if (!dragging) return;
+
+      const dx = e.clientX - startX;
+      currentX = baseX + dx;
+
+      track.style.transform = `translate3d(${currentX}px,0,0)`;
+      e.preventDefault();
+    };
+
+    const onPointerUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      try { wrap.releasePointerCapture?.(e.pointerId); } catch (_) {}
+      resumeAuto();
+    };
+
+    wrap.addEventListener("pointerdown", onPointerDown, { passive: true });
+    wrap.addEventListener("pointermove", onPointerMove, { passive: false });
+    wrap.addEventListener("pointerup", onPointerUp, { passive: true });
+    wrap.addEventListener("pointercancel", onPointerUp, { passive: true });
+    wrap.addEventListener("pointerleave", onPointerUp, { passive: true });
+  };
+
+  bind();
+
+  const observer = new MutationObserver(() => bind());
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -2912,6 +3022,7 @@ function renderSellerName(el, nombre){
 }
 
 async function init() {
+  enableTickerTouchD9();
   injectOrderConfirmStylesD9();
   injectPriceListCleanStickyD9();
   injectCategoryChipStylesD9();
