@@ -972,56 +972,12 @@ async function loadAllData() {
 }
 
 
-
-function resetTickerAnimationD9() {
-  const track =
-    document.querySelector(".ticker-track") ||
-    document.querySelector(".led-marquee-vnext") ||
-    document.querySelector("#tickerTrack");
-
-  if (!track) return;
-
-  // Si el home no está visible todavía, esperar un frame evita medir ancho 0.
-  requestAnimationFrame(() => {
-    try {
-      track.style.animation = "none";
-      track.style.webkitAnimation = "none";
-
-      // Forzar reflow: reinicia animación CSS sin duplicarla.
-      void track.offsetWidth;
-
-      track.style.animation = "";
-      track.style.webkitAnimation = "";
-      track.style.animationPlayState = "running";
-
-      // Si el ticker usa variables de ancho/velocidad, re-renderizar lo recalcula.
-      if (typeof renderTicker === "function") {
-        setTimeout(() => {
-          try {
-            renderTicker();
-  resetTickerWhenHomeD9(); // D9 ticker reset
-          } catch (_) {}
-        }, 60);
-      }
-    } catch (_) {}
-  });
-}
-
-function resetTickerWhenHomeD9() {
-  if (state.currentView !== "home") return;
-  resetTickerAnimationD9();
-  setTimeout(resetTickerAnimationD9, 120);
-}
-
-
 function showView(name, pushHistory = true) {
   state.currentView = name;
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const target = document.getElementById(`view-${name}`);
   if (target) target.classList.add("active");
   window.scrollTo({ top: 0, behavior: "smooth" });
-
-  if (name === "home") resetTickerWhenHomeD9();
 
   if (pushHistory && name !== "home" && window.history && window.history.pushState) {
     history.pushState({ view: name }, "", location.href);
