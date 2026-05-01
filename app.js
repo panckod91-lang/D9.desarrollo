@@ -738,6 +738,30 @@ function injectOrderConfirmStylesD9() {
 }
 
 
+
+function hasActiveOrderDraftD9() {
+  return Boolean(
+    state.selectedClient ||
+    state.guestClientDraft ||
+    state.selectedCategory ||
+    (Array.isArray(state.cart) && state.cart.length)
+  );
+}
+
+function refreshPendingOnlyD9() {
+  renderPendingBadge();
+  renderNetwork();
+}
+
+function safeRenderAfterBackgroundTaskD9() {
+  if (hasActiveOrderDraftD9()) {
+    refreshPendingOnlyD9();
+    return;
+  }
+  renderAll();
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");

@@ -2731,3 +2731,25 @@ body{padding:8px 10px 14px;}
     clip-path:inset(0 round 20px) !important;
   }
 }
+
+
+/* === D9: evitar pull-to-refresh accidental === */
+html,
+body{
+  overscroll-behavior-y:none;
+  overscroll-behavior-x:none;
+}
+
+.app-shell-vnext,
+main{
+  overscroll-behavior-y:contain;
+}
+
+.modal,
+.modal-panel,
+#productModal #productList,
+#orderConfirmContent,
+.price-products-list,
+.history-list{
+  overscroll-behavior:contain;
+}
