@@ -1221,15 +1221,6 @@ body:has(#view-history.active) .status-row-vnext{
   touch-action:pan-y !important;
 }
 
-/* Durante la transición, el fondo siempre oscuro — evita el flash del modo full */
-#bannerWrap.banner-carousel-d9.banner-transition-out,
-#bannerWrap.banner-carousel-d9.banner-transition-in {
-  background:
-    radial-gradient(circle at 83% 24%, rgba(255,72,94,.30), transparent 22%),
-    linear-gradient(135deg,#05214b 0%, #02142e 58%, #16346d 100%) !important;
-  overflow:hidden !important;
-}
-
 
 /* D9 - carrusel: transición visible y suave */
 #bannerWrap.banner-carousel-d9 > a {
