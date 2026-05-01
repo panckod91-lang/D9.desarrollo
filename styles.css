@@ -1190,10 +1190,11 @@ body:has(#view-history.active) .status-row-vnext{
   display:flex !important;
   align-items:center !important;
   justify-content:center !important;
-  overflow:visible !important;
+  overflow:hidden !important;
   text-decoration:none !important;
-  background:transparent !important;
-  border-radius:0 !important;
+  /* fondo oscuro mientras la imagen externa carga */
+  background:linear-gradient(135deg,#05214b 0%, #02142e 58%, #16346d 100%) !important;
+  border-radius:22px !important;
 }
 
 #bannerWrap.banner-mode-full .banner-full-img-d9{
@@ -1219,6 +1220,15 @@ body:has(#view-history.active) .status-row-vnext{
 #bannerWrap.banner-carousel-d9{
   position:relative !important;
   touch-action:pan-y !important;
+}
+
+/* Durante la transición, el fondo siempre oscuro — evita el flash del modo full */
+#bannerWrap.banner-carousel-d9.banner-transition-out,
+#bannerWrap.banner-carousel-d9.banner-transition-in {
+  background:
+    radial-gradient(circle at 83% 24%, rgba(255,72,94,.30), transparent 22%),
+    linear-gradient(135deg,#05214b 0%, #02142e 58%, #16346d 100%) !important;
+  overflow:hidden !important;
 }
 
 
