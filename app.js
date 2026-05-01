@@ -803,9 +803,12 @@ function safeRenderAfterBackgroundTaskD9() {
 
 
 
+
+
+
 function enableTickerTouchD9() {
-  if (window.__d9TickerTouchEnabled) return;
-  window.__d9TickerTouchEnabled = true;
+  if (window.__d9TickerTouchEnabledV2) return;
+  window.__d9TickerTouchEnabledV2 = true;
 
   const bind = () => {
     const wrap =
@@ -818,53 +821,34 @@ function enableTickerTouchD9() {
       document.querySelector(".led-marquee-vnext") ||
       document.querySelector("#tickerTrack");
 
-    if (!wrap || !track || track.dataset.touchBoundD9 === "true") return;
+    if (!wrap || !track || track.dataset.touchBoundD9 === "v2") return;
+    track.dataset.touchBoundD9 = "v2";
 
-    track.dataset.touchBoundD9 = "true";
-
-    let startX = 0;
-    let baseX = 0;
-    let currentX = 0;
     let dragging = false;
+    let startX = 0;
+    let baseOffset = 0;
+    let offsetPx = 0;
     let resumeTimer = null;
+    const speedPxPerSecond = 45;
 
-    const getTranslateX = () => {
-      const transform = window.getComputedStyle(track).transform;
-      if (!transform || transform === "none") return 0;
-
-      const match = transform.match(/matrix\(([^)]+)\)/);
-      if (match) {
-        const parts = match[1].split(",").map(v => Number(v.trim()));
-        return Number.isFinite(parts[4]) ? parts[4] : 0;
-      }
-
-      const match3d = transform.match(/matrix3d\(([^)]+)\)/);
-      if (match3d) {
-        const parts = match3d[1].split(",").map(v => Number(v.trim()));
-        return Number.isFinite(parts[12]) ? parts[12] : 0;
-      }
-
-      return 0;
+    const applyOffset = () => {
+      const delay = -(offsetPx / speedPxPerSecond);
+      track.style.animationDelay = `${delay}s`;
+      track.style.webkitAnimationDelay = `${delay}s`;
     };
 
-    const pauseAuto = () => {
+    const pause = () => {
       clearTimeout(resumeTimer);
       track.style.animationPlayState = "paused";
       track.style.webkitAnimationPlayState = "paused";
     };
 
-    const resumeAuto = () => {
+    const play = () => {
       clearTimeout(resumeTimer);
       resumeTimer = setTimeout(() => {
-        track.style.transition = "transform .25s ease";
-        track.style.transform = "";
         track.style.animationPlayState = "running";
         track.style.webkitAnimationPlayState = "running";
-
-        setTimeout(() => {
-          track.style.transition = "";
-        }, 260);
-      }, 1200);
+      }, 900);
     };
 
     const onPointerDown = (e) => {
@@ -872,11 +856,8 @@ function enableTickerTouchD9() {
 
       dragging = true;
       startX = e.clientX;
-      baseX = getTranslateX();
-      currentX = baseX;
-
-      pauseAuto();
-      track.style.transition = "none";
+      baseOffset = offsetPx;
+      pause();
 
       try { wrap.setPointerCapture?.(e.pointerId); } catch (_) {}
     };
@@ -885,9 +866,10 @@ function enableTickerTouchD9() {
       if (!dragging) return;
 
       const dx = e.clientX - startX;
-      currentX = baseX + dx;
+      // arrastrar a la derecha retrocede; izquierda avanza
+      offsetPx = Math.max(0, baseOffset - dx);
+      applyOffset();
 
-      track.style.transform = `translate3d(${currentX}px,0,0)`;
       e.preventDefault();
     };
 
@@ -895,7 +877,7 @@ function enableTickerTouchD9() {
       if (!dragging) return;
       dragging = false;
       try { wrap.releasePointerCapture?.(e.pointerId); } catch (_) {}
-      resumeAuto();
+      play();
     };
 
     wrap.addEventListener("pointerdown", onPointerDown, { passive: true });
