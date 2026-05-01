@@ -802,6 +802,98 @@ function safeRenderAfterBackgroundTaskD9() {
 }
 
 
+
+
+
+
+function enableTickerTouchD9() {
+  if (window.__d9TickerTouchEnabledV2) return;
+  window.__d9TickerTouchEnabledV2 = true;
+
+  const bind = () => {
+    const wrap =
+      document.querySelector(".led-marquee-wrap-vnext") ||
+      document.querySelector(".ticker-wrap") ||
+      document.querySelector(".ticker-container");
+
+    const track =
+      document.querySelector(".ticker-track") ||
+      document.querySelector(".led-marquee-vnext") ||
+      document.querySelector("#tickerTrack");
+
+    if (!wrap || !track || track.dataset.touchBoundD9 === "v2") return;
+    track.dataset.touchBoundD9 = "v2";
+
+    let dragging = false;
+    let startX = 0;
+    let baseOffset = 0;
+    let offsetPx = 0;
+    let resumeTimer = null;
+    const speedPxPerSecond = 45;
+
+    const applyOffset = () => {
+      const delay = -(offsetPx / speedPxPerSecond);
+      track.style.animationDelay = `${delay}s`;
+      track.style.webkitAnimationDelay = `${delay}s`;
+    };
+
+    const pause = () => {
+      clearTimeout(resumeTimer);
+      track.style.animationPlayState = "paused";
+      track.style.webkitAnimationPlayState = "paused";
+    };
+
+    const play = () => {
+      clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => {
+        track.style.animationPlayState = "running";
+        track.style.webkitAnimationPlayState = "running";
+      }, 900);
+    };
+
+    const onPointerDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+
+      dragging = true;
+      startX = e.clientX;
+      baseOffset = offsetPx;
+      pause();
+
+      try { wrap.setPointerCapture?.(e.pointerId); } catch (_) {}
+    };
+
+    const onPointerMove = (e) => {
+      if (!dragging) return;
+
+      const dx = e.clientX - startX;
+      // arrastrar a la derecha retrocede; izquierda avanza
+      offsetPx = Math.max(0, baseOffset - dx);
+      applyOffset();
+
+      e.preventDefault();
+    };
+
+    const onPointerUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      try { wrap.releasePointerCapture?.(e.pointerId); } catch (_) {}
+      play();
+    };
+
+    wrap.addEventListener("pointerdown", onPointerDown, { passive: true });
+    wrap.addEventListener("pointermove", onPointerMove, { passive: false });
+    wrap.addEventListener("pointerup", onPointerUp, { passive: true });
+    wrap.addEventListener("pointercancel", onPointerUp, { passive: true });
+    wrap.addEventListener("pointerleave", onPointerUp, { passive: true });
+  };
+
+  bind();
+
+  const observer = new MutationObserver(() => bind());
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+
 function renderDualButton(btn, title, sub = "") {
   if (!btn) return;
   const titleEl = btn.querySelector(".title-group-vnext strong, .home-btn-title");
@@ -2432,7 +2524,7 @@ async function syncPending() {
   const pending = readJSON(STORAGE_KEYS.pending, []);
   if (!navigator.onLine || !pending.length) {
     renderPendingBadge();
-    if (!pending.length) toast("No hay pendientes.");
+    if (!pending.length && state.currentView !== "order") toast("No hay pendientes.");
     return;
   }
 
@@ -2875,7 +2967,7 @@ function renderAll() {
   renderTicker();
   renderSupport();
   syncSessionUI();
-  applyUserContext();
+  if (state.currentView !== "order") applyUserContext();
   renderQuickLabels();
   renderCategories();
   renderClients();
@@ -2912,6 +3004,7 @@ function renderSellerName(el, nombre){
 }
 
 async function init() {
+  enableTickerTouchD9();
   injectOrderConfirmStylesD9();
   injectPriceListCleanStickyD9();
   injectCategoryChipStylesD9();
@@ -2935,6 +3028,10 @@ async function init() {
     persistCacheState();
     hydrateGuestClient();
     hydrateSeller();
+    // Si el usuario está en "order" al momento del bootstrap, no pisamos su contexto
+    if (state.currentView !== "order") {
+      applyUserContext();
+    }
     renderAll();
     renderNetwork();
     syncPending();
