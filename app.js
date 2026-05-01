@@ -741,6 +741,7 @@ function injectOrderConfirmStylesD9() {
 
 function hasActiveOrderDraftD9() {
   return Boolean(
+    state.currentView === "order" ||
     state.selectedClient ||
     state.guestClientDraft ||
     state.selectedCategory ||
@@ -748,17 +749,56 @@ function hasActiveOrderDraftD9() {
   );
 }
 
+
+function snapshotOrderDraftD9() {
+  return {
+    selectedClient: state.selectedClient,
+    guestClientDraft: state.guestClientDraft,
+    selectedCategory: state.selectedCategory,
+    cart: Array.isArray(state.cart) ? state.cart.slice() : [],
+    activePriceList: state.activePriceList,
+    manualPriceOverride: state.manualPriceOverride,
+    currentView: state.currentView
+  };
+}
+
+function restoreOrderDraftD9(snap) {
+  if (!snap) return;
+  state.selectedClient = snap.selectedClient;
+  state.guestClientDraft = snap.guestClientDraft;
+  state.selectedCategory = snap.selectedCategory;
+  state.cart = Array.isArray(snap.cart) ? snap.cart.slice() : [];
+  state.activePriceList = snap.activePriceList;
+  state.manualPriceOverride = snap.manualPriceOverride;
+  state.currentView = snap.currentView || state.currentView;
+}
+
+function safeRenderPreservingOrderDraftD9() {
+  if (!hasActiveOrderDraftD9()) {
+    renderAll();
+    return;
+  }
+
+  const snap = snapshotOrderDraftD9();
+  renderAll();
+  restoreOrderDraftD9(snap);
+
+  renderSellerBadge();
+  renderPendingBadge();
+  renderNetwork();
+  renderQuickLabels();
+  renderSelectedClient();
+  renderCart();
+}
+
+
 function refreshPendingOnlyD9() {
   renderPendingBadge();
   renderNetwork();
 }
 
 function safeRenderAfterBackgroundTaskD9() {
-  if (hasActiveOrderDraftD9()) {
-    refreshPendingOnlyD9();
-    return;
-  }
-  renderAll();
+  safeRenderPreservingOrderDraftD9();
 }
 
 
