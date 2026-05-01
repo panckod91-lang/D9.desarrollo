@@ -167,9 +167,19 @@ function parseRowsByKey(rows) {
 
 function confText(key, fallback = "") {
   const row = state.config?.[key];
-  if (!row) return fallback;
+  if (row === null || row === undefined || row === "") return fallback;
+
   if (typeof row === "string") return row || fallback;
-  return row.valor || row.tex1 || fallback;
+  if (typeof row === "number") return String(row);
+  if (typeof row === "boolean") return String(row);
+
+  if (typeof row === "object") {
+    const value = row.valor ?? row.tex1 ?? row.texto ?? "";
+    if (value === null || value === undefined || value === "") return fallback;
+    return String(value);
+  }
+
+  return fallback;
 }
 
 
@@ -784,6 +794,55 @@ function pulseSuccess(btn, label = "Listo", sublabel = "") {
   }, 1400);
 }
 
+
+
+
+function normalizarClaveConfigD9(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function confTextLooseD9(...keys) {
+  const wanted = keys.map(normalizarClaveConfigD9);
+
+  for (const key of keys) {
+    const direct = confText(key, "");
+    if (direct) return direct;
+  }
+
+  const config = state.config || {};
+  for (const [rawKey, rawValue] of Object.entries(config)) {
+    const normalizedKey = normalizarClaveConfigD9(rawKey);
+    if (!wanted.includes(normalizedKey)) continue;
+
+    if (typeof rawValue === "string" || typeof rawValue === "number") {
+      const value = String(rawValue || "").trim();
+      if (value) return value;
+    }
+
+    if (rawValue && typeof rawValue === "object") {
+      const value = String(rawValue.valor || rawValue.tex1 || rawValue.texto || "").trim();
+      if (value) return value;
+    }
+  }
+
+  return "";
+}
+
+function getDefaultWhatsAppD9() {
+  return confTextLooseD9(
+    "telefono_wa",
+    "telefono wa",
+    "telefono-wa",
+    "telefono",
+    "wasapp",
+    "whatsapp",
+    "watsapp"
+  );
+}
 
 
 function openWhatsApp(phone, message) {
@@ -2216,15 +2275,11 @@ async function sendOrder() {
   }
 
   try {
-    const defaultWa =
-      confText("telefono_wa") ||
-      confText("wasapp") ||
-      confText("whatsapp") ||
-      "";
+    const defaultWa = getDefaultWhatsAppD9();
 
     const waPhone = state.seller?.rol === "vendedor"
-      ? (state.seller.wasap_report || defaultWa)
-      : defaultWa;
+      ? (state.seller.wasap_report || getDefaultWhatsAppD9())
+      : getDefaultWhatsAppD9();
     const waText = generateMessageText(payload);
 
     if (!navigator.onLine) {
@@ -2238,7 +2293,7 @@ async function sendOrder() {
     }
 
     if (!openWhatsApp(waPhone, waText)) {
-      toast("Falta telefono_wa / wasapp en confi.");
+      toast("Falta WhatsApp destino en confi.");
       return;
     }
 
