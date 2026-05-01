@@ -2432,7 +2432,7 @@ async function syncPending() {
   const pending = readJSON(STORAGE_KEYS.pending, []);
   if (!navigator.onLine || !pending.length) {
     renderPendingBadge();
-    if (!pending.length) toast("No hay pendientes.");
+    if (!pending.length && state.currentView !== "order") toast("No hay pendientes.");
     return;
   }
 
@@ -2875,7 +2875,7 @@ function renderAll() {
   renderTicker();
   renderSupport();
   syncSessionUI();
-  applyUserContext();
+  if (state.currentView !== "order") applyUserContext();
   renderQuickLabels();
   renderCategories();
   renderClients();
@@ -2935,6 +2935,10 @@ async function init() {
     persistCacheState();
     hydrateGuestClient();
     hydrateSeller();
+    // Si el usuario está en "order" al momento del bootstrap, no pisamos su contexto
+    if (state.currentView !== "order") {
+      applyUserContext();
+    }
     renderAll();
     renderNetwork();
     syncPending();
