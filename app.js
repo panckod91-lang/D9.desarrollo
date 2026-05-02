@@ -124,7 +124,7 @@ async function registerServiceWorker() {
   }
 }
 const onlyDigits = (v) => String(v || "").replace(/\D+/g, "");
-const isTrue = (v) => String(v).trim().toLowerCase() === "true";
+const isTrue = (v) => ["true", "si", "sí", "1", "activo", "yes", "verdadero"].includes(String(v).trim().toLowerCase());
 function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;"); }
 
 function rowVal(row, ...keys) {
@@ -1052,8 +1052,8 @@ async function loadAllData() {
     categoria: String(r.categoria || "Sin categoría").trim() || "Sin categoría",
     precios: {
       lista_1: parseD9Number(r.lista_1 || r.precio || 0),
-      lista_1: parseD9Number(r.lista_1 || r.precio || 0),
-      lista_1: parseD9Number(r.lista_1 || r.precio || 0)
+      lista_2: parseD9Number(r.lista_2 || 0),
+      lista_3: parseD9Number(r.lista_3 || 0)
     }
   }));
 
