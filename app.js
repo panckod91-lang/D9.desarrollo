@@ -1,5 +1,5 @@
 const WEBHOOK_ENDPOINTS = [
-  "https://script.google.com/macros/s/AKfycbyhcs6trzNcrN1M2Uf-8Wl0LYZ1D61o-iKEzeBInWirrAS8NJ0fUX3GCxJ0990E0hNkFQ/exec",
+  "https://old-credit-ffbf.pancko-d9.workers.dev/",
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyhcs6trzNcrN1M2Uf-8Wl0LYZ1D61o-iKEzeBInWirrAS8NJ0fUX3GCxJ0990E0hNkFQ/exec?action=bootstrap";
 const STORAGE_KEYS = {
