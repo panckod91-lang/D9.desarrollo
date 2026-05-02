@@ -1032,7 +1032,7 @@ async function loadAllData() {
     nombre: String(r.nombre || "").trim(),
     clave: String(r.clave || "").trim(),
     rol: String(r.rol || "cliente").trim().toLowerCase(),
-    lista_precio: String(r.lista_precio || "").trim().toLowerCase(),
+    lista_1: String(r.lista_1 || "").trim().toLowerCase(),
     cliente_id: String(r.cliente_id || "").trim(),
     wasap_report: String(r.wasap_report || "").trim()
   }));
@@ -1043,7 +1043,7 @@ async function loadAllData() {
     telefono: String(r.telefono || "").trim(),
     direccion: String(r.direccion || "").trim(),
     ciudad: String(r.ciudad || r.localidad || "").trim(),
-    lista_precio: String(r.lista_precio || "").trim().toLowerCase()
+    lista_1: String(r.lista_1 || "").trim().toLowerCase()
   }));
 
   state.products = products.filter(r => isTrue(r.activo)).map(r => ({
@@ -1052,8 +1052,8 @@ async function loadAllData() {
     categoria: String(r.categoria || "Sin categoría").trim() || "Sin categoría",
     precios: {
       lista_1: parseD9Number(r.lista_1 || r.precio || 0),
-      lista_2: parseD9Number(r.lista_2 || r.precio || 0),
-      lista_3: parseD9Number(r.lista_3 || r.precio || 0)
+      lista_1: parseD9Number(r.lista_1 || r.precio || 0),
+      lista_1: parseD9Number(r.lista_1 || r.precio || 0)
     }
   }));
 
@@ -1532,9 +1532,9 @@ function applyUserContext() {
       nombre: state.seller.nombre,
       telefono: "",
       direccion: "",
-      lista_precio: state.seller.lista_precio || "lista_1"
+      lista_1: state.seller.lista_1 || "lista_1"
     };
-    state.activePriceList = state.selectedClient.lista_precio || state.seller.lista_precio || "lista_1";
+    state.activePriceList = state.selectedClient.lista_1 || state.seller.lista_1 || "lista_1";
   } else {
     state.selectedClient = null;
     state.activePriceList = state.activePriceList || "lista_1";
@@ -1690,15 +1690,15 @@ function loginSeller() {
 
 function getActivePriceList() {
   if (!state.seller) return "lista_1";
-  if (state.seller?.rol === "cliente") return state.selectedClient?.lista_precio || state.seller.lista_precio || "lista_1";
+  if (state.seller?.rol === "cliente") return state.selectedClient?.lista_1 || state.seller.lista_1 || "lista_1";
   return state.activePriceList || "lista_1";
 }
 
 function priceLabel(key) {
   const labels = {
     lista_1: "Lista_1 · Contado",
-    lista_2: "Lista_2 · Pueblos",
-    lista_3: "Lista_3 · Vendedores"
+    lista_1: "Lista_2 · Pueblos",
+    lista_1: "Lista_3 · Vendedores"
   };
   return labels[key] || key || "Lista";
 }
@@ -1793,7 +1793,7 @@ function selectClient(id) {
   state.selectedClient = c;
   if (state.seller?.rol === "vendedor") {
     const previousActive = state.activePriceList || "lista_1";
-    const nextList = c.lista_precio || "lista_1";
+    const nextList = c.lista_1 || "lista_1";
     const changedClient = previousClientId && String(previousClientId) !== String(c.id);
     const changedList = nextList !== previousActive;
     state.activePriceList = nextList;
@@ -1837,7 +1837,7 @@ function renderOrderPriceListControls() {
     box.classList.remove("hidden");
     select.value = state.activePriceList || "lista_1";
     const clientName = state.selectedClient?.nombre_real || state.selectedClient?.nombre || "sin cliente";
-    const defaultList = state.selectedClient?.lista_precio || "lista_1";
+    const defaultList = state.selectedClient?.lista_1 || "lista_1";
     const currentList = state.activePriceList || defaultList;
     const override = !!state.selectedClient && currentList !== defaultList;
     info.textContent = override
@@ -1881,7 +1881,7 @@ function saveOccasionalClient() {
     telefono,
     direccion: [direccion, ciudad].filter(Boolean).join(" · "),
     ciudad,
-    lista_precio: lista,
+    lista_1: lista,
     ocasional: true
   };
   state.guestClientDraft = state.selectedClient;
@@ -2821,7 +2821,7 @@ function bind() {
       return;
     }
     state.activePriceList = next;
-    state.manualPriceOverride = !!state.selectedClient && next !== (state.selectedClient.lista_precio || "lista_1");
+    state.manualPriceOverride = !!state.selectedClient && next !== (state.selectedClient.lista_1 || "lista_1");
     refreshPricesAcrossApp();
     if (state.cart.length) toast(`Se aplicó ${priceLabel(next)} al pedido.`);
   });
