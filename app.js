@@ -1,5 +1,5 @@
 const WEBHOOK_ENDPOINTS = [
-  "https://wild-pond-6b36.pancko-d9.workers.dev",
+  "https://script.google.com/macros/s/AKfycbyhcs6trzNcrN1M2Uf-8Wl0LYZ1D61o-iKEzeBInWirrAS8NJ0fUX3GCxJ0990E0hNkFQ/exec",
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyhcs6trzNcrN1M2Uf-8Wl0LYZ1D61o-iKEzeBInWirrAS8NJ0fUX3GCxJ0990E0hNkFQ/exec?action=bootstrap";
 const STORAGE_KEYS = {
