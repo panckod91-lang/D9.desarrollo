@@ -2,11 +2,13 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
+const APP_VERSION = "v1.0.0 (integración)";
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
   pending: "d9_pendientes",
-  guestClient: "d9_invitado_cliente"
+  guestClient: "d9_invitado_cliente",
+  versionLogged: "d9_version_logged"
 };
 const CACHE_KEYS = {
   config: "d9_cache_config",
@@ -98,6 +100,99 @@ function parseD9Number(value) {
 
 const readJSON = (k, f = null) => { try { return JSON.parse(localStorage.getItem(k)) ?? f; } catch { return f; } };
 const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+function getApiBaseD9() {
+  return BOOTSTRAP_URL.split("?")[0];
+}
+
+function getVersionDateD9() {
+  return new Date().toLocaleString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+}
+
+async function postVersionLogD9(payload) {
+  const apiBase = getApiBaseD9();
+  const body = JSON.stringify(payload);
+
+  async function tryPost(options) {
+    const r = await fetch(`${apiBase}?action=log_version`, {
+      method: "POST",
+      cache: "no-store",
+      redirect: "follow",
+      ...options
+    });
+
+    const text = await r.text();
+
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      throw new Error("Respuesta no JSON del script: " + text.slice(0, 160));
+    }
+  }
+
+  try {
+    return await tryPost({
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body
+    });
+  } catch (firstErr) {
+    console.warn("[D9] log_version text/plain falló, pruebo payload form", firstErr);
+    return await tryPost({
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" },
+      body: "payload=" + encodeURIComponent(body)
+    });
+  }
+}
+
+async function registerAppVersionD9() {
+  try {
+    const alreadyInSheet = String(state.support?.version || "").trim() === APP_VERSION;
+
+    if (alreadyInSheet) {
+      localStorage.setItem(STORAGE_KEYS.versionLogged, APP_VERSION);
+      return;
+    }
+
+    if (localStorage.getItem(STORAGE_KEYS.versionLogged) === APP_VERSION) {
+      return;
+    }
+
+    const fecha = getVersionDateD9();
+
+    const result = await postVersionLogD9({
+      action: "log_version",
+      version: APP_VERSION,
+      fecha
+    });
+
+    if (!result?.ok) {
+      throw new Error(result?.error || "El script no confirmó log_version");
+    }
+
+    state.support = {
+      ...(state.support || {}),
+      version: APP_VERSION,
+      version_fecha: fecha
+    };
+
+    saveJSON(CACHE_KEYS.support, state.support);
+    localStorage.setItem(STORAGE_KEYS.versionLogged, APP_VERSION);
+
+    console.log("[D9] Versión registrada en soporte", APP_VERSION, fecha);
+  } catch (err) {
+    console.warn("[D9] No se pudo registrar versión:", err);
+  }
+}
+
 function hydrateCacheState() {
   state.config = readJSON(CACHE_KEYS.config, state.config || {});
   state.users = readJSON(CACHE_KEYS.users, state.users || []);
@@ -3025,6 +3120,7 @@ async function init() {
 
   try {
     await loadAllData();
+    await registerAppVersionD9();
     persistCacheState();
     hydrateGuestClient();
     hydrateSeller();
