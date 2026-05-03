@@ -1,7 +1,7 @@
 const WEBHOOK_ENDPOINTS = [
-  "https://old-credit-ffbf.pancko-d9.workers.dev/",
+  "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
-const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbyhcs6trzNcrN1M2Uf-8Wl0LYZ1D61o-iKEzeBInWirrAS8NJ0fUX3GCxJ0990E0hNkFQ/exec?action=bootstrap";
+const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
