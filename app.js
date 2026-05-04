@@ -2,7 +2,11 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.0 (integración)";
+const APP_VERSION = "v1.0.2 (auto refresh)";
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
+const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
+let lastAutoRefreshAtD9 = 0;
+let autoRefreshStartedD9 = false;
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -3098,6 +3102,61 @@ function renderSellerName(el, nombre){
   });
 }
 
+
+function shouldSkipAutoRefreshD9() {
+  if (!navigator.onLine) return true;
+  if (state.isSending || state.isSyncing) return true;
+  if (state.currentView === "order") return true;
+  if (typeof getOpenModalName === "function" && getOpenModalName()) return true;
+  return false;
+}
+
+async function refreshDataInBackgroundD9(reason = "auto") {
+  if (shouldSkipAutoRefreshD9()) return false;
+
+  try {
+    await loadAllData();
+    persistCacheState();
+    hydrateGuestClient();
+    hydrateSeller();
+
+    if (state.currentView !== "order") {
+      applyUserContext();
+    }
+
+    safeRenderAfterBackgroundTaskD9();
+    renderTicker();
+    renderBanner();
+    renderNetwork();
+
+    lastAutoRefreshAtD9 = Date.now();
+    console.log(`[D9] Datos actualizados automáticamente (${reason}).`);
+    return true;
+  } catch (err) {
+    console.warn(`[D9] No se pudo actualizar automáticamente (${reason}):`, err);
+    return false;
+  }
+}
+
+function setupAutoRefreshD9() {
+  if (autoRefreshStartedD9) return;
+  autoRefreshStartedD9 = true;
+  lastAutoRefreshAtD9 = Date.now();
+
+  setInterval(() => {
+    refreshDataInBackgroundD9("interval");
+  }, AUTO_REFRESH_MS);
+
+  const refreshOnReturn = () => {
+    if (document.visibilityState && document.visibilityState !== "visible") return;
+    if (Date.now() - lastAutoRefreshAtD9 < FOREGROUND_REFRESH_MIN_MS) return;
+    refreshDataInBackgroundD9("return");
+  };
+
+  document.addEventListener("visibilitychange", refreshOnReturn);
+  window.addEventListener("focus", refreshOnReturn);
+}
+
 async function init() {
   enableTickerTouchD9();
   injectOrderConfirmStylesD9();
@@ -3113,6 +3172,7 @@ async function init() {
   renderAll();
   renderNetwork();
   await registerServiceWorker();
+  setupAutoRefreshD9();
 
   if (!navigator.onLine) {
     return;
