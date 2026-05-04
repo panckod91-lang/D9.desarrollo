@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.2 (auto refresh dev)";
+const APP_VERSION = "v1.0.3 (fix categorias sticky)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
