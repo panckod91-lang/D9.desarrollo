@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.0 (icono identidad fix)";
+const APP_VERSION = "v1.1.1 (busqueda codigo producto)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2197,6 +2197,23 @@ function cleanCategory(cat) {
     .trim();
 }
 
+function productMatchesSearch(p, term) {
+  const q = String(term || "").trim().toLowerCase();
+  if (!q) return true;
+
+  return [
+    p.nombre,
+    p.categoria,
+    cleanCategory(p.categoria),
+    p.id
+  ].some(value => String(value || "").toLowerCase().includes(q));
+}
+
+function productCodeHtml(p) {
+  const id = String(p?.id || "").trim();
+  return id ? `<div class="option-meta product-code-d9">Cód. ${esc(id)}</div>` : "";
+}
+
 
 function renderPriceProducts() {
   const box = $("#priceProductsList");
@@ -2209,7 +2226,7 @@ function renderPriceProducts() {
   if (term) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => p.nombre.toLowerCase().includes(term) && (!cat || p.categoria === cat))
+      .filter(p => productMatchesSearch(p, term) && (!cat || p.categoria === cat))
       .sort(sortByName)
       .slice(0, 500);
   } else if (cat) {
@@ -2234,6 +2251,7 @@ function renderPriceProducts() {
     <div class="price-row">
       <div class="price-row-main">
         <strong>${esc(p.nombre)}</strong>
+        ${productCodeHtml(p)}
         <div class="option-meta">${esc(cleanCategory(p.categoria))}</div>
       </div>
       <div class="price-row-side">
@@ -2296,7 +2314,7 @@ function renderProducts() {
   if (term) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => p.nombre.toLowerCase().includes(term) && (!cat || p.categoria === cat))
+      .filter(p => productMatchesSearch(p, term) && (!cat || p.categoria === cat))
       .sort(sortByName)
       .slice(0, 500);
   } else if (cat) {
@@ -2402,7 +2420,9 @@ function generateMessageText(payload = null) {
   ].filter(Boolean);
 
   source.carrito.forEach(item => {
-    lines.push(`- ${item.nombre} x${item.cantidad} = ${money(item.precio * item.cantidad)}`);
+    const codigo = String(item.id_producto || item.id || "").trim();
+    const codigoTxt = codigo ? `Cód. ${codigo} - ` : "";
+    lines.push(`- ${codigoTxt}${item.nombre} x${item.cantidad} = ${money(item.precio * item.cantidad)}`);
   });
 
   lines.push("", `Total: ${money(source.total)}`);
@@ -2421,6 +2441,7 @@ function renderCart() {
         <div class="cart-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
+            ${item.id ? `<div class="mini-text">Cód. ${esc(item.id)}</div>` : ""}
             <div class="mini-text">${money(item.precio)} c/u</div>
           </div>
           <button class="remove-btn" data-remove-id="${esc(item.id)}" type="button">Quitar</button>
@@ -2523,9 +2544,9 @@ function buildOrderPayload() {
     fecha: new Date().toISOString(),
     vendedor: state.seller,
     cliente: state.selectedClient,
-    carrito: state.cart.map(x => ({ id: x.id, nombre: x.nombre, cantidad: x.cantidad, precio: x.precio })),
+    carrito: state.cart.map(x => ({ id: x.id, id_producto: x.id, nombre: x.nombre, cantidad: x.cantidad, precio: x.precio })),
     total: cartTotal(),
-    detalle: state.cart.map(x => `${x.nombre} x${x.cantidad}`).join(" | ")
+    detalle: state.cart.map(x => `${x.id ? `Cód. ${x.id} - ` : ""}${x.nombre} x${x.cantidad}`).join(" | ")
   };
 }
 
@@ -2549,6 +2570,8 @@ function buildWebhookPayload(payload) {
     vendedor: payload?.vendedor?.nombre || "",
     cliente: clienteTexto,
     items: (payload?.carrito || []).map(item => ({
+      id_producto: String(item.id_producto || item.id || "").trim(),
+      id: String(item.id || item.id_producto || "").trim(),
       nombre: item.nombre,
       cantidad: Number(item.cantidad || 0),
       precio: Number(item.precio || 0)
@@ -2614,6 +2637,7 @@ function saveHistory(payload, status = "enviado", error = "") {
     status,
     items: (payload.carrito || []).map(x => ({
       id: x.id,
+      id_producto: x.id_producto || x.id || "",
       nombre: x.nombre,
       cantidad: x.cantidad,
       precio: x.precio,
@@ -2823,6 +2847,7 @@ function renderHistory() {
             <div class="history-product-row">
               <div class="history-product-main">
                 <strong>${esc(prod.nombre)}</strong>
+                ${prod.id_producto || prod.id ? `<div class="mini-text">Cód. ${esc(prod.id_producto || prod.id)}</div>` : ""}
                 <div class="mini-text">${money(prod.precio)} c/u</div>
               </div>
               <div class="history-product-side">
@@ -2942,6 +2967,7 @@ function openOrderConfirmModal() {
     <div class="confirm-product-row-d9">
       <div>
         <strong>${esc(item.nombre)}</strong>
+        ${item.id ? `<small>Cód. ${esc(item.id)}</small>` : ""}
         <span>x${Number(item.cantidad || 0)}</span>
       </div>
       <b>${money(Number(item.precio || 0) * Number(item.cantidad || 0))}</b>

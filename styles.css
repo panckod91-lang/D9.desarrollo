@@ -3083,3 +3083,17 @@ button:active,
   width:100% !important;
   text-align:center !important;
 }
+
+/* D9 v1.1.1 - código de producto visible y discreto */
+.product-code-d9{
+  font-size:.76rem;
+  opacity:.72;
+  margin-top:2px;
+}
+.confirm-product-row-d9 small{
+  display:block;
+  margin-top:2px;
+  font-size:.72rem;
+  opacity:.72;
+  font-weight:600;
+}
