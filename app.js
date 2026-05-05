@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.1 (busqueda codigo producto)";
+const APP_VERSION = "v1.1.2 (whatsapp ticket compacto)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2404,28 +2404,32 @@ function generateMessageText(payload = null) {
     total: cartTotal()
   };
 
-  if (!source.cliente || !source.carrito.length) return "Seleccioná cliente y productos.";
+  const items = Array.isArray(source.carrito) ? source.carrito : [];
+  if (!source.cliente || !items.length) return "Seleccioná cliente y productos.";
 
-  const clienteTexto = [
-    source.cliente?.nombre_real || source.cliente?.nombre || "",
-    source.cliente?.telefono || "",
-    source.cliente?.direccion || (source.cliente?.ciudad || "")
-  ].filter(Boolean).join(" | ");
+  const clienteTexto = source.cliente?.nombre_real || source.cliente?.nombre || "";
+  const unidadesTotales = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
 
   const lines = [
-    "Pedido:",
     `Cliente: ${clienteTexto}`,
     source.vendedor?.nombre ? `Usuario: ${source.vendedor.nombre}` : "",
     ""
-  ].filter(Boolean);
+  ].filter(line => line !== "");
 
-  source.carrito.forEach(item => {
+  items.forEach((item, index) => {
     const codigo = String(item.id_producto || item.id || "").trim();
-    const codigoTxt = codigo ? `Cód. ${codigo} - ` : "";
-    lines.push(`- ${codigoTxt}${item.nombre} x${item.cantidad} = ${money(item.precio * item.cantidad)}`);
+    const cantidad = Number(item.cantidad || 0);
+
+    lines.push(`${index + 1}) ${item.nombre || "Producto"}`);
+    lines.push(`   ${codigo ? `Cód: ${codigo} · ` : ""}Cant: ${cantidad}`);
   });
 
-  lines.push("", `Total: ${money(source.total)}`);
+  lines.push(
+    "────────────────────",
+    `Items: ${items.length} · Unidades: ${unidadesTotales}`,
+    `TOTAL: ${money(Number(source.total || 0))}`
+  );
+
   return lines.join("\n");
 }
 
@@ -2441,8 +2445,7 @@ function renderCart() {
         <div class="cart-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
-            ${item.id ? `<div class="mini-text">Cód. ${esc(item.id)}</div>` : ""}
-            <div class="mini-text">${money(item.precio)} c/u</div>
+            <div class="mini-text">${item.id ? `Cód. ${esc(item.id)} · ` : ""}${money(item.precio)} c/u</div>
           </div>
           <button class="remove-btn" data-remove-id="${esc(item.id)}" type="button">Quitar</button>
         </div>
@@ -2847,8 +2850,7 @@ function renderHistory() {
             <div class="history-product-row">
               <div class="history-product-main">
                 <strong>${esc(prod.nombre)}</strong>
-                ${prod.id_producto || prod.id ? `<div class="mini-text">Cód. ${esc(prod.id_producto || prod.id)}</div>` : ""}
-                <div class="mini-text">${money(prod.precio)} c/u</div>
+                <div class="mini-text">${prod.id_producto || prod.id ? `Cód. ${esc(prod.id_producto || prod.id)} · ` : ""}${money(prod.precio)} c/u</div>
               </div>
               <div class="history-product-side">
                 <span class="history-qty">x${esc(prod.cantidad)}</span>
@@ -2967,8 +2969,7 @@ function openOrderConfirmModal() {
     <div class="confirm-product-row-d9">
       <div>
         <strong>${esc(item.nombre)}</strong>
-        ${item.id ? `<small>Cód. ${esc(item.id)}</small>` : ""}
-        <span>x${Number(item.cantidad || 0)}</span>
+        <small>${item.id ? `Cód. ${esc(item.id)} · ` : ""}x${Number(item.cantidad || 0)} · ${money(Number(item.precio || 0))} c/u</small>
       </div>
       <b>${money(Number(item.precio || 0) * Number(item.cantidad || 0))}</b>
     </div>
