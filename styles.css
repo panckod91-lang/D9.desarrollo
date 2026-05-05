@@ -2935,3 +2935,35 @@ main{
 #sellerBadge.identity-invitado-d9 .identity-name-d9{
   max-width:145px !important;
 }
+
+
+/* === v1.0.8 identidad compacta === */
+#sellerBadge{
+  min-height:54px !important;
+  padding-top:8px !important;
+  padding-bottom:8px !important;
+  gap:2px !important;
+}
+
+#sellerBadge .seller-name{
+  line-height:1.08 !important;
+}
+
+#sellerBadge .identity-name-d9{
+  max-width:165px !important;
+}
+
+#sellerBadge .identity-role-d9{
+  margin-top:0 !important;
+  font-size:11px !important;
+  line-height:1.05 !important;
+  white-space:nowrap !important;
+}
+
+#btnPancko.version-alert-d9{
+  min-width:96px !important;
+  font-size:13px !important;
+  padding-left:10px !important;
+  padding-right:10px !important;
+  white-space:nowrap !important;
+}
