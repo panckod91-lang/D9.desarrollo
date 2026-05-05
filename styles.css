@@ -3039,3 +3039,47 @@ button:active,
   50%{ transform:scale(1.12); opacity:1; }
   100%{ transform:scale(.92); opacity:.70; }
 }
+
+
+/* === v1.1.0 fix definitivo icono fantasma identidad === */
+
+/* El icono superior venía de pseudo-elementos heredados del chip central */
+#sellerBadge::before,
+#sellerBadge::after,
+#sellerBadge .seller-name::before,
+#sellerBadge .seller-name::after,
+.status-pill-user-vnext#sellerBadge::before,
+.status-pill-user-vnext#sellerBadge::after,
+.status-pill-user-vnext#sellerBadge .seller-name::before,
+.status-pill-user-vnext#sellerBadge .seller-name::after{
+  content:none !important;
+  display:none !important;
+  width:0 !important;
+  height:0 !important;
+  min-width:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+/* fuerza estructura limpia: nombre arriba, rol abajo */
+#sellerBadge{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:2px !important;
+}
+
+#sellerBadge .seller-name{
+  display:block !important;
+  width:100% !important;
+  text-align:center !important;
+}
+
+#sellerBadge .identity-role-d9{
+  display:block !important;
+  width:100% !important;
+  text-align:center !important;
+}
