@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.5 (busqueda limpia al tocar)";
+const APP_VERSION = "v1.1.6 (cantidad manual pro)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -47,7 +47,8 @@ const state = {
   manualPriceOverride: false,
   hasLoadedData: false,
   orderSendLockUntil: 0,
-  lastOrderFingerprint: ""
+  lastOrderFingerprint: "",
+  qtyModalItemId: ""
 };
 
 const bannerCarousel = {
@@ -2440,6 +2441,107 @@ function generateMessageText(payload = null) {
   return lines.join("\n");
 }
 
+
+function ensureQtyModalD9() {
+  let modal = document.getElementById("qtyModal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.id = "qtyModal";
+  modal.className = "modal hidden qty-modal-d9";
+  modal.setAttribute("aria-hidden", "true");
+  modal.innerHTML = `
+    <div class="modal-backdrop" data-close-modal="qty"></div>
+    <div class="modal-panel qty-panel-d9" role="dialog" aria-modal="true" aria-labelledby="qtyModalTitle">
+      <div class="modal-head-row qty-head-d9">
+        <div>
+          <h3 id="qtyModalTitle">Cantidad</h3>
+          <p id="qtyModalProduct" class="modal-text small-gap"></p>
+        </div>
+        <button class="ghost-x" data-close-modal="qty" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <label class="qty-input-label-d9" for="qtyModalInput">Ingresá cantidad</label>
+      <input id="qtyModalInput" class="qty-input-d9" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" autocomplete="off" />
+      <p class="qty-help-d9">0 elimina el producto del pedido.</p>
+      <div class="qty-actions-d9">
+        <button id="btnQtyCancel" class="secondary-btn" type="button">Cancelar</button>
+        <button id="btnQtyApply" class="primary-btn" type="button">Aplicar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  modal.querySelector("#btnQtyCancel")?.addEventListener("click", closeQtyModalD9);
+  modal.querySelector("#btnQtyApply")?.addEventListener("click", applyQtyModalD9);
+  modal.querySelector("#qtyModalInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") applyQtyModalD9();
+    if (e.key === "Escape") closeQtyModalD9();
+  });
+
+  return modal;
+}
+
+function openQtyModalD9(id) {
+  const item = state.cart.find(x => x.id === id);
+  if (!item) return;
+
+  const modal = ensureQtyModalD9();
+  state.qtyModalItemId = id;
+
+  const productEl = modal.querySelector("#qtyModalProduct");
+  const input = modal.querySelector("#qtyModalInput");
+
+  if (productEl) productEl.textContent = item.nombre || "Producto";
+  if (input) input.value = String(Number(item.cantidad || 1));
+
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+
+  setTimeout(() => {
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.select();
+  }, 80);
+}
+
+function closeQtyModalD9() {
+  const modal = document.getElementById("qtyModal");
+  if (!modal) return;
+  state.qtyModalItemId = "";
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function applyQtyModalD9() {
+  const id = state.qtyModalItemId;
+  const input = document.getElementById("qtyModalInput");
+  if (!id || !input) return;
+
+  const raw = String(input.value || "").trim();
+  const qty = Math.floor(Number(raw.replace(",", ".")));
+
+  if (!Number.isFinite(qty) || qty < 0) {
+    toast("Ingresá una cantidad válida.");
+    input.focus();
+    input.select();
+    return;
+  }
+
+  const item = state.cart.find(x => x.id === id);
+  if (!item) return closeQtyModalD9();
+
+  if (qty <= 0) {
+    state.cart = state.cart.filter(x => x.id !== id);
+  } else {
+    item.cantidad = qty;
+    item.precio = productPrice(item);
+  }
+
+  closeQtyModalD9();
+  renderProducts();
+  renderQuickLabels();
+  renderCart();
+}
+
 function renderCart() {
   const box = $("#cartList");
   if (!state.cart.length) {
@@ -2456,11 +2558,12 @@ function renderCart() {
           </div>
           <button class="remove-btn" data-remove-id="${esc(item.id)}" type="button">Quitar</button>
         </div>
-        <div class="qty-row">
+        <div class="qty-row qty-row-pro-d9">
           <button class="qty-btn" data-qty="minus" data-id="${esc(item.id)}" type="button">−</button>
           <div class="qty-value">${item.cantidad}</div>
           <button class="qty-btn" data-qty="plus" data-id="${esc(item.id)}" type="button">+</button>
-          <div class="product-price">${money(item.precio * item.cantidad)}</div>
+          <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">Cant.</button>
+          <div class="product-price cart-line-total-d9">${money(item.precio * item.cantidad)}</div>
         </div>
       </div>`).join("");
   }
@@ -3154,6 +3257,9 @@ function bind() {
 
     const qty = ev.target.closest("[data-qty]");
     if (qty) updateQty(qty.dataset.id, qty.dataset.qty === "plus" ? 1 : -1);
+
+    const editQty = ev.target.closest("[data-edit-qty]");
+    if (editQty) openQtyModalD9(editQty.dataset.editQty);
 
     const remove = ev.target.closest("[data-remove-id]");
     if (remove) removeItem(remove.dataset.removeId);
