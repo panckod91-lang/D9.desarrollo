@@ -2,11 +2,12 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.3 (fix categorias sticky)";
+const APP_VERSION = "v1.0.4 (update alert)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
 let autoRefreshStartedD9 = false;
+let isAppUpdateAvailableD9 = false;
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
@@ -1236,13 +1237,51 @@ function setupAndroidBackButton() {
 }
 
 
+
+function setAppUpdateAvailableD9(flag) {
+  isAppUpdateAvailableD9 = !!flag;
+  updateSupportChip();
+}
+
+async function checkAppVersionD9() {
+  try {
+    const res = await fetch(`./app.js?vcheck=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return;
+
+    const txt = await res.text();
+    const match = txt.match(/const\s+APP_VERSION\s*=\s*"([^"]+)"/);
+    const latest = match ? String(match[1] || "").trim() : "";
+
+    if (latest && latest !== APP_VERSION) {
+      setAppUpdateAvailableD9(true);
+    } else {
+      setAppUpdateAvailableD9(false);
+    }
+  } catch (err) {
+    console.warn("[D9] No se pudo verificar versión nueva:", err);
+  }
+}
+
+function reloadAppForUpdateD9() {
+  window.location.href = `${location.pathname}?v=${Date.now()}`;
+}
+
 function updateSupportChip() {
   const chipEl = $("#btnPancko");
   if (!chipEl) return;
+  chipEl.classList.toggle("version-alert-d9", !!isAppUpdateAvailableD9);
+
+  if (isAppUpdateAvailableD9) {
+    chipEl.textContent = "⚠️ Actualizar";
+    chipEl.title = "Nueva versión disponible";
+    return;
+  }
+
+  chipEl.title = "";
   chipEl.textContent =
     state.support?.["chip_info"] ||
     state.support?.["chip info"] ||
-    "M.J.S.";
+    "Sync";
 }
 
 function renderTop() {
@@ -1719,6 +1758,18 @@ function renderCompanyInfo() {
       </div>
     `);
   }
+
+  const supportName = state.support?.["chip_info"] || state.support?.["chip info"] || "M.J.S.";
+  const supportVersion = state.support?.["version"] || state.support?.["versión"] || APP_VERSION;
+  const supportDate = state.support?.["fecha"] || state.support?.["version_fecha"] || "";
+
+  contacto.push(`
+    <div>
+      <span>Soporte</span>
+      <strong>${esc(supportName)}</strong>
+      <small>${esc(supportVersion)}${supportDate ? " · " + esc(supportDate) : ""}</small>
+    </div>
+  `);
 
   if (contacto.length) {
     html += `
@@ -2896,7 +2947,13 @@ function bind() {
   $("#btnGoOrder").addEventListener("click", () => showView("order"));
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
-  $("#btnPancko").addEventListener("click", () => { renderSupport(); showView("support"); });
+  $("#btnPancko").addEventListener("click", () => {
+    if (isAppUpdateAvailableD9) {
+      reloadAppForUpdateD9();
+      return;
+    }
+    refreshDataInBackgroundD9("manual");
+  });
   $("#btnChangeSeller").addEventListener("click", () => openLogin(false));
   const companyBtn = $("#btnCompanyInfo");
   if (companyBtn) companyBtn.addEventListener("click", openCompanyInfo);
@@ -3128,6 +3185,7 @@ async function refreshDataInBackgroundD9(reason = "auto") {
     renderTicker();
     renderBanner();
     renderNetwork();
+    checkAppVersionD9();
 
     lastAutoRefreshAtD9 = Date.now();
     console.log(`[D9] Datos actualizados automáticamente (${reason}).`);
@@ -3190,6 +3248,7 @@ async function init() {
     }
     renderAll();
     renderNetwork();
+    checkAppVersionD9();
     syncPending();
   } catch (error) {
     console.error(error);
