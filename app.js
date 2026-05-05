@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.3 (selector tactil codigo visual wa)";
+const APP_VERSION = "v1.1.4 (busqueda global codigo)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2311,9 +2311,11 @@ function renderProducts() {
   let filtered = [];
 
   if (term) {
+    // Con búsqueda escrita, buscar globalmente en todo el catálogo.
+    // Sin búsqueda, se respeta la categoría seleccionada.
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => productMatchesTerm(p, term) && (!cat || p.categoria === cat))
+      .filter(p => productMatchesTerm(p, term))
       .sort(sortByName)
       .slice(0, 500);
   } else if (cat) {
@@ -2339,6 +2341,7 @@ function renderProducts() {
           <div class="product-copy product-main-d9" ${selected ? 'data-no-toggle="true"' : ''}>
             <strong>${esc(p.nombre)}</strong>
             <div class="option-meta">${esc(productMetaLine(p))}</div>
+            ${term && cat && p.categoria !== cat ? `<div class="option-meta product-cross-category-d9">Cat. ${esc(cleanCategory(p.categoria))}</div>` : ""}
           </div>
           <div class="product-side product-qty-zone-d9" ${selected ? 'data-no-toggle="true"' : ''}>
             ${selected ? `
