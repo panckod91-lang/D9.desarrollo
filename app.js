@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.0 (icono identidad fix)";
+const APP_VERSION = "v1.1.1 (busqueda codigo visual wa)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2197,6 +2197,33 @@ function cleanCategory(cat) {
     .trim();
 }
 
+function productCode(p) {
+  return String(p?.id || p?.codigo || p?.cod || p?.sku || "").trim();
+}
+
+function productMatchesTerm(p, term) {
+  const t = String(term || "").trim().toLowerCase();
+  if (!t) return true;
+  return [p?.nombre, p?.categoria, productCode(p)]
+    .some(v => String(v || "").toLowerCase().includes(t));
+}
+
+function productMetaLine(p, includePrice = true) {
+  const code = productCode(p);
+  const parts = [];
+  if (code) parts.push(`Cód. ${code}`);
+  if (includePrice) parts.push(`${money(productPrice(p))} c/u`);
+  return parts.join(" · ");
+}
+
+function itemMetaLine(item) {
+  const code = productCode(item);
+  const parts = [];
+  if (code) parts.push(`Cód. ${code}`);
+  parts.push(`${money(Number(item.precio || 0))} c/u`);
+  return parts.join(" · ");
+}
+
 
 function renderPriceProducts() {
   const box = $("#priceProductsList");
@@ -2209,7 +2236,7 @@ function renderPriceProducts() {
   if (term) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => p.nombre.toLowerCase().includes(term) && (!cat || p.categoria === cat))
+      .filter(p => productMatchesTerm(p, term) && (!cat || p.categoria === cat))
       .sort(sortByName)
       .slice(0, 500);
   } else if (cat) {
@@ -2234,7 +2261,7 @@ function renderPriceProducts() {
     <div class="price-row">
       <div class="price-row-main">
         <strong>${esc(p.nombre)}</strong>
-        <div class="option-meta">${esc(cleanCategory(p.categoria))}</div>
+        <div class="option-meta">${esc([productCode(p) ? `Cód. ${productCode(p)}` : "", cleanCategory(p.categoria)].filter(Boolean).join(" · "))}</div>
       </div>
       <div class="price-row-side">
         <strong>${money(productPrice(p))}</strong>
@@ -2296,7 +2323,7 @@ function renderProducts() {
   if (term) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => p.nombre.toLowerCase().includes(term) && (!cat || p.categoria === cat))
+      .filter(p => productMatchesTerm(p, term) && (!cat || p.categoria === cat))
       .sort(sortByName)
       .slice(0, 500);
   } else if (cat) {
@@ -2317,10 +2344,9 @@ function renderProducts() {
         <button class="product-item product-picker ${selected ? "is-selected" : ""}" data-toggle-product="${esc(p.id)}" type="button">
           <div class="product-copy">
             <strong>${esc(p.nombre)}</strong>
-            <div class="option-meta">${esc(cleanCategory(p.categoria))}</div>
+            <div class="option-meta">${esc(productMetaLine(p))}</div>
           </div>
           <div class="product-side">
-            <div class="product-price">${money(productPrice(p))}</div>
             ${selected ? `
               <div class="qty-inline-d9" data-no-toggle="true">
                 <span>Cant:</span>
@@ -2388,24 +2414,24 @@ function generateMessageText(payload = null) {
 
   if (!source.cliente || !source.carrito.length) return "Seleccioná cliente y productos.";
 
-  const clienteTexto = [
-    source.cliente?.nombre_real || source.cliente?.nombre || "",
-    source.cliente?.telefono || "",
-    source.cliente?.direccion || (source.cliente?.ciudad || "")
-  ].filter(Boolean).join(" | ");
+  const clienteTexto = source.cliente?.nombre_real || source.cliente?.nombre || "";
+  const unidadesTotales = source.carrito.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
 
   const lines = [
-    "Pedido:",
     `Cliente: ${clienteTexto}`,
     source.vendedor?.nombre ? `Usuario: ${source.vendedor.nombre}` : "",
     ""
-  ].filter(Boolean);
+  ].filter(line => line !== "");
 
-  source.carrito.forEach(item => {
-    lines.push(`- ${item.nombre} x${item.cantidad} = ${money(item.precio * item.cantidad)}`);
+  source.carrito.forEach((item, index) => {
+    const code = productCode(item);
+    lines.push(`${index + 1}) ${item.nombre}`);
+    lines.push(`   ${code ? `Cód: ${code} · ` : ""}Cant: ${Number(item.cantidad || 0)}`);
   });
 
-  lines.push("", `Total: ${money(source.total)}`);
+  lines.push("────────────────────");
+  lines.push(`Items: ${source.carrito.length} · Unidades: ${unidadesTotales}`);
+  lines.push(`TOTAL: ${money(source.total)}`);
   return lines.join("\n");
 }
 
@@ -2421,7 +2447,7 @@ function renderCart() {
         <div class="cart-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
-            <div class="mini-text">${money(item.precio)} c/u</div>
+            <div class="mini-text">${esc(itemMetaLine(item))}</div>
           </div>
           <button class="remove-btn" data-remove-id="${esc(item.id)}" type="button">Quitar</button>
         </div>
@@ -2549,6 +2575,8 @@ function buildWebhookPayload(payload) {
     vendedor: payload?.vendedor?.nombre || "",
     cliente: clienteTexto,
     items: (payload?.carrito || []).map(item => ({
+      id: item.id || "",
+      id_producto: item.id || "",
       nombre: item.nombre,
       cantidad: Number(item.cantidad || 0),
       precio: Number(item.precio || 0)
@@ -2942,7 +2970,7 @@ function openOrderConfirmModal() {
     <div class="confirm-product-row-d9">
       <div>
         <strong>${esc(item.nombre)}</strong>
-        <span>x${Number(item.cantidad || 0)}</span>
+        <span>${esc(itemMetaLine(item))} · Cant: ${Number(item.cantidad || 0)}</span>
       </div>
       <b>${money(Number(item.precio || 0) * Number(item.cantidad || 0))}</b>
     </div>
