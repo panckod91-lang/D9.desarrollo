@@ -2967,3 +2967,75 @@ main{
   padding-right:10px !important;
   white-space:nowrap !important;
 }
+
+
+/* === v1.0.9 feedback tap + icono identidad fix definitivo === */
+
+/* Mata cualquier icono viejo/fantasma que quede como primer hijo directo */
+#sellerBadge > .identity-icon-d9,
+#sellerBadge > .user-icon,
+#sellerBadge > .icon,
+#sellerBadge > span:first-child:not(.seller-name){
+  display:none !important;
+}
+
+/* Asegura que solo quede nombre + rol */
+#sellerBadge{
+  overflow:hidden !important;
+}
+
+#sellerBadge .seller-name::before{
+  content:none !important;
+  display:none !important;
+}
+
+#sellerBadge .identity-name-d9{
+  max-width:165px !important;
+}
+
+/* Feedback visual general */
+button,
+.action-card-vnext,
+.cta-main-vnext,
+.status-pill-vnext,
+.price-card-vnext,
+.product-card,
+.client-card,
+.category-card,
+.modal button{
+  -webkit-tap-highlight-color: transparent !important;
+  touch-action: manipulation !important;
+  transition:
+    transform .09s ease,
+    box-shadow .09s ease,
+    filter .09s ease,
+    opacity .09s ease !important;
+}
+
+button:active,
+.action-card-vnext:active,
+.cta-main-vnext:active,
+.status-pill-vnext:active,
+.price-card-vnext:active,
+.product-card:active,
+.client-card:active,
+.category-card:active,
+.modal button:active,
+.tap-active-d9{
+  transform:scale(.965) !important;
+  filter:brightness(.96) !important;
+}
+
+#btnPancko.is-syncing-d9{
+  opacity:.88 !important;
+}
+
+#btnPancko.is-syncing-d9::before{
+  animation:d9SyncPulse 850ms ease-in-out infinite !important;
+}
+
+@keyframes d9SyncPulse{
+  0%{ transform:scale(.92); opacity:.70; }
+  50%{ transform:scale(1.12); opacity:1; }
+  100%{ transform:scale(.92); opacity:.70; }
+}

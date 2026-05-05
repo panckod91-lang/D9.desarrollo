@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.8 (identidad compacta)";
+const APP_VERSION = "v1.0.9 (feedback tap)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -62,6 +62,21 @@ const bannerCarousel = {
 
 const $ = (s) => document.querySelector(s);
 const money = (v) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(v) || 0);
+
+function tapFeedbackD9() {
+  try {
+    if (navigator.vibrate) navigator.vibrate(18);
+  } catch (_) {}
+}
+
+function setSyncChipBusyD9(busy) {
+  const btn = $("#btnPancko");
+  if (!btn || isAppUpdateAvailableD9) return;
+
+  btn.classList.toggle("is-syncing-d9", !!busy);
+  btn.textContent = busy ? "↻ Sync..." : "↻ Sync";
+}
+
 
 function parseD9Number(value) {
   if (value === null || value === undefined || value === "") return 0;
@@ -2982,6 +2997,14 @@ function confirmOrderAndSend() {
 }
 
 function bind() {
+  document.addEventListener("pointerdown", (ev) => {
+    const target = ev.target.closest("button, .action-card-vnext, .status-pill-vnext, [data-view], [data-back]");
+    if (!target) return;
+    target.classList.add("tap-active-d9");
+    window.setTimeout(() => target.classList.remove("tap-active-d9"), 160);
+  }, { passive: true });
+
+
   bindInlineQtyCaptureD9();
 
   document.addEventListener("click", (e) => {
@@ -3228,6 +3251,12 @@ function shouldSkipAutoRefreshD9() {
 async function refreshDataInBackgroundD9(reason = "auto") {
   if (shouldSkipAutoRefreshD9()) return false;
 
+  const isManual = reason === "manual";
+  if (isManual) {
+    tapFeedbackD9();
+    setSyncChipBusyD9(true);
+  }
+
   try {
     await loadAllData();
     persistCacheState();
@@ -3245,12 +3274,15 @@ async function refreshDataInBackgroundD9(reason = "auto") {
     checkAppVersionD9();
 
     lastAutoRefreshAtD9 = Date.now();
-    if (reason === "manual") toast("Datos sincronizados.");
+    if (isManual) toast("Datos sincronizados.");
     console.log(`[D9] Datos actualizados automáticamente (${reason}).`);
     return true;
   } catch (err) {
     console.warn(`[D9] No se pudo actualizar automáticamente (${reason}):`, err);
+    if (isManual) toast("No se pudo sincronizar.");
     return false;
+  } finally {
+    if (isManual) setSyncChipBusyD9(false);
   }
 }
 
