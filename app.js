@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.2 (whatsapp ticket compacto)";
+const APP_VERSION = "v1.1.3 (sheet primero + ticket whatsapp)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2666,7 +2666,7 @@ async function sendOrder() {
   const payload = buildOrderPayload();
 
   if (isOrderSendLocked(payload)) return;
-  lockOrderSend(payload, 6000);
+  lockOrderSend(payload, 9000);
 
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
@@ -2679,12 +2679,15 @@ async function sendOrder() {
   }
 
   try {
-    const defaultWa = getDefaultWhatsAppD9();
-
     const waPhone = state.seller?.rol === "vendedor"
       ? (state.seller.wasap_report || getDefaultWhatsAppD9())
       : getDefaultWhatsAppD9();
     const waText = generateMessageText(payload);
+
+    if (!onlyDigits(waPhone)) {
+      toast("Falta WhatsApp destino en confi.");
+      return;
+    }
 
     if (!navigator.onLine) {
       savePendingPayload(payload);
@@ -2693,35 +2696,28 @@ async function sendOrder() {
       renderPendingBadge();
       toast("Sin internet. Pedido guardado pendiente.");
       if (pendingBtn) pulseSuccess(pendingBtn, "Pendiente guardado", "Se enviará al recuperar conexión");
+      openWhatsApp(waPhone, waText);
       return;
     }
 
-    if (!openWhatsApp(waPhone, waText)) {
-      toast("Falta WhatsApp destino en confi.");
-      return;
+    // Primero confirmamos Sheet. Después abrimos WhatsApp.
+    // Esto evita que el navegador suspenda el POST al saltar a WhatsApp.
+    const res = await trySendToWebhook(payload);
+
+    if (!res || !res.ok) {
+      savePendingPayload(payload);
+      saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
+      renderPendingBadge();
+      toast("WhatsApp abierto. Pedido quedó pendiente de sincronizar.");
+      console.warn("Pedido pendiente:", res?.error || res);
+    } else {
+      saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
+      clearDraftPedidoIdD9();
+      renderPendingBadge();
+      pulseSuccess(sendBtn, "Enviado");
     }
 
-    trySendToWebhook(payload)
-      .then(res => {
-        if (!res || !res.ok) {
-          savePendingPayload(payload);
-          saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
-          renderPendingBadge();
-          console.warn("Pedido pendiente:", res?.error);
-        } else {
-          saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
-          clearDraftPedidoIdD9();
-          renderPendingBadge();
-        }
-      })
-      .catch(err => {
-        savePendingPayload(payload);
-        saveHistory(payload, "pendiente", String(err));
-        renderPendingBadge();
-        console.error("Error total, guardado local:", err);
-      });
-
-    pulseSuccess(sendBtn, "Enviado");
+    openWhatsApp(waPhone, waText);
   } finally {
     if (state.seller?.rol === "cliente") {
       applyUserContext();
