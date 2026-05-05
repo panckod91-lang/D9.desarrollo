@@ -2800,3 +2800,55 @@ main{
   font-size:12px !important;
   line-height:1.25 !important;
 }
+
+
+/* === v1.0.5 sync chip + soporte full modal === */
+#btnPancko{
+  min-width:86px !important;
+  font-weight:900 !important;
+}
+
+#btnPancko.version-alert-d9{
+  min-width:112px !important;
+}
+
+.company-support-full-d9{
+  margin-top:18px !important;
+  padding:16px 18px !important;
+  border:1px solid rgba(23,52,84,.10) !important;
+  border-radius:20px !important;
+  background:#f6fbff !important;
+  box-shadow:0 4px 14px rgba(21,91,145,.06) !important;
+}
+
+.company-support-full-d9 span{
+  display:block !important;
+  color:#7b8a95 !important;
+  font-size:13px !important;
+  font-weight:800 !important;
+  margin-bottom:5px !important;
+}
+
+.company-support-full-d9 strong{
+  display:block !important;
+  color:#173454 !important;
+  font-size:18px !important;
+  line-height:1.2 !important;
+}
+
+.company-support-meta-d9{
+  margin-top:10px !important;
+  display:grid !important;
+  gap:4px !important;
+}
+
+.company-support-meta-d9 p{
+  margin:0 !important;
+  color:#637789 !important;
+  font-size:13px !important;
+  line-height:1.35 !important;
+}
+
+.company-support-meta-d9 b{
+  color:#173454 !important;
+}

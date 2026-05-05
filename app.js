@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.4 (update alert)";
+const APP_VERSION = "v1.0.5 (sync soporte modal)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1269,6 +1269,7 @@ function reloadAppForUpdateD9() {
 function updateSupportChip() {
   const chipEl = $("#btnPancko");
   if (!chipEl) return;
+
   chipEl.classList.toggle("version-alert-d9", !!isAppUpdateAvailableD9);
 
   if (isAppUpdateAvailableD9) {
@@ -1277,11 +1278,8 @@ function updateSupportChip() {
     return;
   }
 
-  chipEl.title = "";
-  chipEl.textContent =
-    state.support?.["chip_info"] ||
-    state.support?.["chip info"] ||
-    "Sync";
+  chipEl.title = "Sincronizar datos";
+  chipEl.textContent = "↻ Sync";
 }
 
 function renderTop() {
@@ -1759,18 +1757,6 @@ function renderCompanyInfo() {
     `);
   }
 
-  const supportName = state.support?.["chip_info"] || state.support?.["chip info"] || "M.J.S.";
-  const supportVersion = state.support?.["version"] || state.support?.["versión"] || APP_VERSION;
-  const supportDate = state.support?.["fecha"] || state.support?.["version_fecha"] || "";
-
-  contacto.push(`
-    <div>
-      <span>Soporte</span>
-      <strong>${esc(supportName)}</strong>
-      <small>${esc(supportVersion)}${supportDate ? " · " + esc(supportDate) : ""}</small>
-    </div>
-  `);
-
   if (contacto.length) {
     html += `
       <div class="company-contact-d9">
@@ -1781,6 +1767,28 @@ function renderCompanyInfo() {
       </div>
     `;
   }
+
+
+  const supportName = state.support?.["chip_info"] || state.support?.["chip info"] || "M.J.S.";
+  const supportVersion = state.support?.["version"] || state.support?.["versión"] || APP_VERSION;
+  const supportDate = state.support?.["fecha"] || state.support?.["version_fecha"] || "";
+  const supportPhone = state.support?.["whatsapp"] || state.support?.["telefono"] || "";
+  const supportMail = state.support?.["email"] || "";
+
+  html += `
+    <div class="company-support-full-d9">
+      <div>
+        <span>Soporte técnico</span>
+        <strong>${esc(supportName)}</strong>
+      </div>
+      <div class="company-support-meta-d9">
+        <p><b>Versión:</b> ${esc(supportVersion)}</p>
+        ${supportDate ? `<p><b>Actualizada:</b> ${esc(supportDate)}</p>` : ""}
+        ${supportPhone ? `<p><b>WhatsApp soporte:</b> ${esc(supportPhone)}</p>` : ""}
+        ${supportMail ? `<p><b>Email:</b> ${esc(supportMail)}</p>` : ""}
+      </div>
+    </div>
+  `;
 
   box.innerHTML = html;
 }
@@ -3188,6 +3196,7 @@ async function refreshDataInBackgroundD9(reason = "auto") {
     checkAppVersionD9();
 
     lastAutoRefreshAtD9 = Date.now();
+    if (reason === "manual") toast("Datos sincronizados.");
     console.log(`[D9] Datos actualizados automáticamente (${reason}).`);
     return true;
   } catch (err) {
