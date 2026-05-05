@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.4 (sheet primero + whatsapp sin bloqueo)";
+const APP_VERSION = "v1.1.1 (busqueda codigo producto)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1116,15 +1116,10 @@ function getDefaultWhatsAppD9() {
 }
 
 
-function buildWhatsAppUrlD9(phone, message) {
-  const digits = onlyDigits(phone);
-  if (!digits) return "";
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
-}
-
 function openWhatsApp(phone, message) {
-  const waUrl = buildWhatsAppUrlD9(phone, message);
-  if (!waUrl) return false;
+  const digits = onlyDigits(phone);
+  if (!digits) return false;
+  const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
   window.open(waUrl, "_blank");
   return true;
 }
@@ -2409,32 +2404,28 @@ function generateMessageText(payload = null) {
     total: cartTotal()
   };
 
-  const items = Array.isArray(source.carrito) ? source.carrito : [];
-  if (!source.cliente || !items.length) return "Seleccioná cliente y productos.";
+  if (!source.cliente || !source.carrito.length) return "Seleccioná cliente y productos.";
 
-  const clienteTexto = source.cliente?.nombre_real || source.cliente?.nombre || "";
-  const unidadesTotales = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+  const clienteTexto = [
+    source.cliente?.nombre_real || source.cliente?.nombre || "",
+    source.cliente?.telefono || "",
+    source.cliente?.direccion || (source.cliente?.ciudad || "")
+  ].filter(Boolean).join(" | ");
 
   const lines = [
+    "Pedido:",
     `Cliente: ${clienteTexto}`,
     source.vendedor?.nombre ? `Usuario: ${source.vendedor.nombre}` : "",
     ""
-  ].filter(line => line !== "");
+  ].filter(Boolean);
 
-  items.forEach((item, index) => {
+  source.carrito.forEach(item => {
     const codigo = String(item.id_producto || item.id || "").trim();
-    const cantidad = Number(item.cantidad || 0);
-
-    lines.push(`${index + 1}) ${item.nombre || "Producto"}`);
-    lines.push(`   ${codigo ? `Cód: ${codigo} · ` : ""}Cant: ${cantidad}`);
+    const codigoTxt = codigo ? `Cód. ${codigo} - ` : "";
+    lines.push(`- ${codigoTxt}${item.nombre} x${item.cantidad} = ${money(item.precio * item.cantidad)}`);
   });
 
-  lines.push(
-    "────────────────────",
-    `Items: ${items.length} · Unidades: ${unidadesTotales}`,
-    `TOTAL: ${money(Number(source.total || 0))}`
-  );
-
+  lines.push("", `Total: ${money(source.total)}`);
   return lines.join("\n");
 }
 
@@ -2450,7 +2441,8 @@ function renderCart() {
         <div class="cart-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
-            <div class="mini-text">${item.id ? `Cód. ${esc(item.id)} · ` : ""}${money(item.precio)} c/u</div>
+            ${item.id ? `<div class="mini-text">Cód. ${esc(item.id)}</div>` : ""}
+            <div class="mini-text">${money(item.precio)} c/u</div>
           </div>
           <button class="remove-btn" data-remove-id="${esc(item.id)}" type="button">Quitar</button>
         </div>
@@ -2671,7 +2663,7 @@ async function sendOrder() {
   const payload = buildOrderPayload();
 
   if (isOrderSendLocked(payload)) return;
-  lockOrderSend(payload, 9000);
+  lockOrderSend(payload, 6000);
 
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
@@ -2684,20 +2676,12 @@ async function sendOrder() {
   }
 
   try {
+    const defaultWa = getDefaultWhatsAppD9();
+
     const waPhone = state.seller?.rol === "vendedor"
       ? (state.seller.wasap_report || getDefaultWhatsAppD9())
       : getDefaultWhatsAppD9();
     const waText = generateMessageText(payload);
-
-    const waUrl = buildWhatsAppUrlD9(waPhone, waText);
-    if (!waUrl) {
-      toast("Falta WhatsApp destino en confi.");
-      return;
-    }
-
-    // Abrimos la pestaña inmediatamente, dentro del gesto del botón.
-    // Después de un await, algunos navegadores bloquean WhatsApp como popup.
-    const waTab = window.open("about:blank", "_blank");
 
     if (!navigator.onLine) {
       savePendingPayload(payload);
@@ -2706,30 +2690,35 @@ async function sendOrder() {
       renderPendingBadge();
       toast("Sin internet. Pedido guardado pendiente.");
       if (pendingBtn) pulseSuccess(pendingBtn, "Pendiente guardado", "Se enviará al recuperar conexión");
-      if (waTab) waTab.location.href = waUrl;
-      else window.location.href = waUrl;
       return;
     }
 
-    // Primero confirmamos Sheet. Después abrimos WhatsApp.
-    // Esto evita que el navegador suspenda el POST al saltar a WhatsApp.
-    const res = await trySendToWebhook(payload);
-
-    if (!res || !res.ok) {
-      savePendingPayload(payload);
-      saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
-      renderPendingBadge();
-      toast("WhatsApp abierto. Pedido quedó pendiente de sincronizar.");
-      console.warn("Pedido pendiente:", res?.error || res);
-    } else {
-      saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
-      clearDraftPedidoIdD9();
-      renderPendingBadge();
-      pulseSuccess(sendBtn, "Enviado");
+    if (!openWhatsApp(waPhone, waText)) {
+      toast("Falta WhatsApp destino en confi.");
+      return;
     }
 
-    if (waTab) waTab.location.href = waUrl;
-    else window.location.href = waUrl;
+    trySendToWebhook(payload)
+      .then(res => {
+        if (!res || !res.ok) {
+          savePendingPayload(payload);
+          saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
+          renderPendingBadge();
+          console.warn("Pedido pendiente:", res?.error);
+        } else {
+          saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
+          clearDraftPedidoIdD9();
+          renderPendingBadge();
+        }
+      })
+      .catch(err => {
+        savePendingPayload(payload);
+        saveHistory(payload, "pendiente", String(err));
+        renderPendingBadge();
+        console.error("Error total, guardado local:", err);
+      });
+
+    pulseSuccess(sendBtn, "Enviado");
   } finally {
     if (state.seller?.rol === "cliente") {
       applyUserContext();
@@ -2858,7 +2847,8 @@ function renderHistory() {
             <div class="history-product-row">
               <div class="history-product-main">
                 <strong>${esc(prod.nombre)}</strong>
-                <div class="mini-text">${prod.id_producto || prod.id ? `Cód. ${esc(prod.id_producto || prod.id)} · ` : ""}${money(prod.precio)} c/u</div>
+                ${prod.id_producto || prod.id ? `<div class="mini-text">Cód. ${esc(prod.id_producto || prod.id)}</div>` : ""}
+                <div class="mini-text">${money(prod.precio)} c/u</div>
               </div>
               <div class="history-product-side">
                 <span class="history-qty">x${esc(prod.cantidad)}</span>
@@ -2977,7 +2967,8 @@ function openOrderConfirmModal() {
     <div class="confirm-product-row-d9">
       <div>
         <strong>${esc(item.nombre)}</strong>
-        <small>${item.id ? `Cód. ${esc(item.id)} · ` : ""}x${Number(item.cantidad || 0)} · ${money(Number(item.precio || 0))} c/u</small>
+        ${item.id ? `<small>Cód. ${esc(item.id)}</small>` : ""}
+        <span>x${Number(item.cantidad || 0)}</span>
       </div>
       <b>${money(Number(item.precio || 0) * Number(item.cantidad || 0))}</b>
     </div>
