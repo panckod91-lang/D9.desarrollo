@@ -2339,21 +2339,25 @@ function renderProducts() {
 
   list.innerHTML = filtered.length
     ? filtered.map(p => {
-      const selected = state.cart.some(x => x.id === p.id);
+      const cartItem = state.cart.find(x => x.id === p.id);
+      const selected = !!cartItem;
+      const cantidad = Number(cartItem?.cantidad || 1);
+      const precio = Number(cartItem?.precio || productPrice(p) || 0);
+      const subtotal = cantidad * precio;
       return `
         <button class="product-item product-picker ${selected ? "is-selected" : ""}" data-toggle-product="${esc(p.id)}" type="button">
-          <div class="product-copy">
+          <div class="product-copy product-main-d9">
             <strong>${esc(p.nombre)}</strong>
             <div class="option-meta">${esc(productMetaLine(p))}</div>
           </div>
-          <div class="product-side">
+          <div class="product-side product-qty-zone-d9" data-no-toggle="true">
             ${selected ? `
               <div class="qty-inline-d9" data-no-toggle="true">
-                <span>Cant:</span>
                 <span class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" role="button" tabindex="0">−</span>
-                <strong>${state.cart.find(x => x.id === p.id)?.cantidad || 1}</strong>
+                <strong>${cantidad}</strong>
                 <span class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" role="button" tabindex="0">+</span>
               </div>
+              <div class="product-line-total-d9">x${cantidad} · ${money(subtotal)}</div>
             ` : `<div class="pick-state">Tocar para agregar</div>`}
           </div>
         </button>`;
@@ -3142,7 +3146,7 @@ function bind() {
     if (cat) selectCategory(cat.dataset.category);
 
     const toggle = ev.target.closest("[data-toggle-product]");
-    if (toggle) toggleProduct(toggle.dataset.toggleProduct);
+    if (toggle && !ev.target.closest("[data-no-toggle]")) toggleProduct(toggle.dataset.toggleProduct);
 
     const qty = ev.target.closest("[data-qty]");
     if (qty) updateQty(qty.dataset.id, qty.dataset.qty === "plus" ? 1 : -1);
