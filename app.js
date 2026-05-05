@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.6 (identidad activa)";
+const APP_VERSION = "v1.0.7 (identidad fix)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1349,15 +1349,9 @@ function getActiveIdentityD9() {
 
 function renderIdentityNameD9(el, name) {
   el.textContent = "";
-  const icon = document.createElement("span");
-  icon.className = "identity-icon-d9";
-  icon.textContent = "👥";
-
   const text = document.createElement("span");
   text.className = "identity-name-d9";
   text.textContent = name;
-
-  el.appendChild(icon);
   el.appendChild(text);
 }
 
@@ -3009,7 +3003,7 @@ function bind() {
   $("#btnGoOrder").addEventListener("click", () => showView("order"));
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
-  $("#sellerBadge").addEventListener("click", () => showView("user"));
+  $("#sellerBadge").addEventListener("click", () => openLogin(false));
   $("#btnPancko").addEventListener("click", () => {
     if (isAppUpdateAvailableD9) {
       reloadAppForUpdateD9();

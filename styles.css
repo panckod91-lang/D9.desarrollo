@@ -2917,3 +2917,21 @@ main{
 #sellerBadge.identity-invitado-d9 .identity-role-d9{
   color:#c58b00 !important;
 }
+
+
+/* === v1.0.7 identidad fix === */
+#sellerBadge .identity-icon-d9{
+  display:none !important;
+}
+
+#sellerBadge .seller-name{
+  gap:0 !important;
+}
+
+#sellerBadge .identity-name-d9{
+  max-width:155px !important;
+}
+
+#sellerBadge.identity-invitado-d9 .identity-name-d9{
+  max-width:145px !important;
+}
