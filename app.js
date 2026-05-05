@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.4 (busqueda global codigo)";
+const APP_VERSION = "v1.1.5 (busqueda limpia al tocar)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2294,9 +2294,18 @@ function renderCategories() {
     </button>`).join("");
 }
 
+function clearProductSearchD9(shouldRender = true) {
+  const input = $("#productSearch");
+  if (!input) return;
+  if (input.value) {
+    input.value = "";
+    if (shouldRender) renderProducts();
+  }
+}
+
 function selectCategory(category) {
   state.selectedCategory = category;
-  $("#productSearch").value = "";
+  clearProductSearchD9(false);
   renderCategories();
   renderProducts();
   renderQuickLabels();
@@ -3070,7 +3079,10 @@ function bind() {
   $("#sellerPass").addEventListener("keydown", (e) => { if (e.key === "Enter") loginSeller(); });
   $("#btnCloseLogin").addEventListener("click", closeLogin);
   $("#clientSearch").addEventListener("input", renderClients);
-  $("#productSearch").addEventListener("input", renderProducts);
+  const productSearchInputD9 = $("#productSearch");
+  productSearchInputD9.addEventListener("input", renderProducts);
+  productSearchInputD9.addEventListener("pointerdown", () => clearProductSearchD9(true));
+  productSearchInputD9.addEventListener("focus", () => clearProductSearchD9(true));
   $("#priceSearch").addEventListener("input", (e) => { state.priceSearch = e.target.value.trim().toLowerCase(); renderPriceProducts(); });
   $("#priceListSelect").addEventListener("change", (e) => { state.activePriceList = e.target.value; refreshPricesAcrossApp(); });
   const orderPriceSelect = $("#orderPriceListSelect");
