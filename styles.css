@@ -2852,3 +2852,68 @@ main{
 .company-support-meta-d9 b{
   color:#173454 !important;
 }
+
+
+/* === v1.0.6 identidad activa === */
+#sellerBadge{
+  cursor:pointer !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:center !important;
+  align-items:center !important;
+  gap:1px !important;
+  min-height:58px !important;
+  line-height:1.1 !important;
+  transition:transform .16s ease, box-shadow .16s ease !important;
+}
+
+#sellerBadge:active{
+  transform:scale(.97) !important;
+}
+
+#sellerBadge .seller-name{
+  max-width:100% !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:6px !important;
+  font-weight:950 !important;
+  line-height:1.05 !important;
+  min-width:0 !important;
+}
+
+#sellerBadge .identity-icon-d9{
+  flex:0 0 auto !important;
+  font-size:18px !important;
+  line-height:1 !important;
+}
+
+#sellerBadge .identity-name-d9{
+  min-width:0 !important;
+  max-width:150px !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  display:block !important;
+}
+
+#sellerBadge .identity-role-d9{
+  display:block !important;
+  font-size:11px !important;
+  font-weight:850 !important;
+  color:#7b8a95 !important;
+  line-height:1.1 !important;
+  margin-top:2px !important;
+}
+
+#sellerBadge.identity-vendedor-d9 .identity-role-d9{
+  color:#1684d8 !important;
+}
+
+#sellerBadge.identity-cliente-d9 .identity-role-d9{
+  color:#18a66a !important;
+}
+
+#sellerBadge.identity-invitado-d9 .identity-role-d9{
+  color:#c58b00 !important;
+}

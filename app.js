@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.0.5 (sync soporte modal!)";
+const APP_VERSION = "v1.0.6 (identidad activa)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1318,6 +1318,49 @@ function renderNetwork() {
   }
 }
 
+function getActiveIdentityD9() {
+  if (state.seller) {
+    const rolRaw = String(state.seller.rol || "").trim().toLowerCase();
+    const rol = rolRaw === "cliente" ? "Cliente" : rolRaw === "vendedor" ? "Vendedor" : "Usuario";
+    return {
+      name: state.seller.nombre || "Usuario",
+      role: rol,
+      kind: rolRaw || "usuario",
+      muted: false
+    };
+  }
+
+  if (state.guestClientDraft?.nombre_real || state.guestClientDraft?.nombre) {
+    return {
+      name: state.guestClientDraft.nombre_real || state.guestClientDraft.nombre || "Invitado",
+      role: "Invitado",
+      kind: "invitado",
+      muted: false
+    };
+  }
+
+  return {
+    name: "Sin usuario",
+    role: "",
+    kind: "none",
+    muted: true
+  };
+}
+
+function renderIdentityNameD9(el, name) {
+  el.textContent = "";
+  const icon = document.createElement("span");
+  icon.className = "identity-icon-d9";
+  icon.textContent = "👥";
+
+  const text = document.createElement("span");
+  text.className = "identity-name-d9";
+  text.textContent = name;
+
+  el.appendChild(icon);
+  el.appendChild(text);
+}
+
 function renderSellerBadge() {
   const badge = $("#sellerBadge");
   if (!badge) return;
@@ -1330,15 +1373,25 @@ function renderSellerBadge() {
     badge.appendChild(nameEl);
   }
 
-  if (!state.seller) {
-    nameEl.textContent = "Sin usuario";
-    badge.classList.add("muted");
-    return;
+  let roleEl = badge.querySelector(".identity-role-d9");
+  if (!roleEl) {
+    roleEl = document.createElement("small");
+    roleEl.className = "identity-role-d9";
+    badge.appendChild(roleEl);
   }
 
-  renderSellerName(nameEl, state.seller.nombre || "Usuario");
-  badge.classList.remove("muted");
+  const identity = getActiveIdentityD9();
+
+  badge.classList.toggle("muted", !!identity.muted);
+  badge.classList.remove("identity-vendedor-d9", "identity-cliente-d9", "identity-invitado-d9", "identity-none-d9");
+  badge.classList.add(`identity-${identity.kind || "none"}-d9`);
+  badge.setAttribute("role", "button");
+  badge.title = "Ver usuario";
+
+  renderIdentityNameD9(nameEl, identity.name);
+  roleEl.textContent = identity.role || "";
 }
+
 
 function renderPendingBadge() {
   const pending = readJSON(STORAGE_KEYS.pending, []);
@@ -2043,6 +2096,7 @@ function saveOccasionalClient() {
     ocasional: true
   };
   state.guestClientDraft = state.selectedClient;
+  renderSellerBadge();
   if (!state.seller) {
     saveJSON(STORAGE_KEYS.guestClient, state.guestClientDraft);
   }
@@ -2955,6 +3009,7 @@ function bind() {
   $("#btnGoOrder").addEventListener("click", () => showView("order"));
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
+  $("#sellerBadge").addEventListener("click", () => showView("user"));
   $("#btnPancko").addEventListener("click", () => {
     if (isAppUpdateAvailableD9) {
       reloadAppForUpdateD9();
