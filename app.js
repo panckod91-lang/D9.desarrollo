@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.101 (modal invitado arriba)";
+const APP_VERSION = "v1.1.9 (selector controles no deselecciona)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3017,8 +3017,42 @@ function renderHistory() {
           </div>
         </div>
         ${detailHtml}
+        <div class="history-actions" data-no-toggle>
+          <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
+          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button">🗑️</button>
+        </div>
       </button>`;
   }).join('');
+}
+
+function reuseHistoryItem(id) {
+  const history = readJSON(STORAGE_KEYS.history, []);
+  const item = history.find(x => x.id === id);
+  if (!item) return toast("No encontré el pedido.");
+
+  state.cart = (item.items || []).map(x => ({
+    id: x.id,
+    nombre: x.nombre,
+    cantidad: Number(x.cantidad || 1),
+    precio: Number(x.precio || 0)
+  }));
+
+  renderCart();
+  showView("home");
+  toast("Pedido reutilizado.");
+}
+
+function deleteHistoryItem(id) {
+  if (!confirm("¿Borrar este pedido del historial?")) return;
+
+  const history = readJSON(STORAGE_KEYS.history, []);
+  const filtered = history.filter(x => x.id !== id);
+  saveJSON(STORAGE_KEYS.history, filtered);
+
+  if (state.historyOpenId === id) state.historyOpenId = null;
+
+  renderHistory();
+  toast("Pedido eliminado del historial.");
 }
 
 function toggleHistoryItem(id) {
@@ -3295,6 +3329,20 @@ function bind() {
 
     const remove = ev.target.closest("[data-remove-id]");
     if (remove) removeItem(remove.dataset.removeId);
+
+    const reuseHistory = ev.target.closest("[data-reuse-history]");
+    if (reuseHistory) {
+      ev.stopPropagation();
+      reuseHistoryItem(reuseHistory.dataset.reuseHistory);
+      return;
+    }
+
+    const deleteHistory = ev.target.closest("[data-delete-history]");
+    if (deleteHistory) {
+      ev.stopPropagation();
+      deleteHistoryItem(deleteHistory.dataset.deleteHistory);
+      return;
+    }
 
     const historyItem = ev.target.closest("[data-history-id]");
     if (historyItem) toggleHistoryItem(historyItem.dataset.historyId);
