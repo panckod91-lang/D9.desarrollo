@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.6 (cantidad manual pro)";
+const APP_VERSION = "v1.1.7 (wasap report libre)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2790,9 +2790,11 @@ async function sendOrder() {
   try {
     const defaultWa = getDefaultWhatsAppD9();
 
-    const waPhone = state.seller?.rol === "vendedor"
-      ? (state.seller.wasap_report || getDefaultWhatsAppD9())
-      : getDefaultWhatsAppD9();
+    // WhatsApp destino libre por usuario logueado:
+    // si el usuario tiene wasap_report, se usa sin importar el rol.
+    // Si no tiene, cae al WhatsApp general de confi.
+    const userWaReport = String(state.seller?.wasap_report || "").trim();
+    const waPhone = userWaReport || defaultWa;
     const waText = generateMessageText(payload);
 
     if (!navigator.onLine) {
