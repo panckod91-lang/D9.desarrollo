@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.16 (selector controles no deselecciona)";
+const APP_VERSION = "v1.1.12 (historial integrado fix)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3004,12 +3004,16 @@ function renderHistory() {
         </div>`;
 
     return `
-      <button class="history-item ${isOpen ? 'is-open' : ''}" data-history-id="${esc(itemId)}" type="button">
+      <div class="history-item ${isOpen ? 'is-open' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
         <div class="history-head-row">
           <div class="history-copy">
             <strong>${esc(item.cliente)}</strong>
             <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
             <div class="mini-text history-meta-line">${esc(item.vendedor)} · ${esc(item.status || "")}${item.error ? ' · ' + esc(item.error) : ''}</div>
+            <div class="history-actions" data-no-toggle>
+              <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
+              <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar pedido del historial">🗑️</button>
+            </div>
           </div>
           <div class="history-side">
             <div class="product-price">${money(item.total)}</div>
@@ -3017,11 +3021,7 @@ function renderHistory() {
           </div>
         </div>
         ${detailHtml}
-        <div class="history-actions" data-no-toggle>
-          <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
-          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button">🗑️</button>
-        </div>
-      </button>`;
+      </div>`;
   }).join('');
 }
 
@@ -3038,21 +3038,58 @@ function reuseHistoryItem(id) {
   }));
 
   renderCart();
-  showView("home");
+  showView("order");
   toast("Pedido reutilizado.");
 }
 
 function deleteHistoryItem(id) {
-  if (!confirm("¿Borrar este pedido del historial?")) return;
+  showD9Confirm({
+    message: "¿Borrar este pedido del historial local?",
+    detail: "Esto no borra nada de Google Sheets ni cancela pedidos ya enviados.",
+    okText: "Borrar",
+    cancelText: "Cancelar",
+    onOk: () => {
+      const history = readJSON(STORAGE_KEYS.history, []);
+      const filtered = history.filter(x => x.id !== id);
+      saveJSON(STORAGE_KEYS.history, filtered);
 
-  const history = readJSON(STORAGE_KEYS.history, []);
-  const filtered = history.filter(x => x.id !== id);
-  saveJSON(STORAGE_KEYS.history, filtered);
+      if (state.historyOpenId === id) state.historyOpenId = null;
 
-  if (state.historyOpenId === id) state.historyOpenId = null;
+      renderHistory();
+      toast("Pedido eliminado del historial local.");
+    }
+  });
+}
 
-  renderHistory();
-  toast("Pedido eliminado del historial.");
+function showD9Confirm({ message, detail = "", okText = "Aceptar", cancelText = "Cancelar", onOk }) {
+  const prev = document.getElementById("d9ConfirmOverlay");
+  if (prev) prev.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "d9ConfirmOverlay";
+  overlay.className = "d9-confirm-overlay";
+  overlay.innerHTML = `
+    <div class="d9-confirm-box" role="dialog" aria-modal="true">
+      <h3>Distribuidora 9 dice:</h3>
+      <p>${esc(message)}</p>
+      ${detail ? `<small>${esc(detail)}</small>` : ""}
+      <div class="d9-confirm-actions">
+        <button class="d9-confirm-cancel" type="button">${esc(cancelText)}</button>
+        <button class="d9-confirm-ok" type="button">${esc(okText)}</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector(".d9-confirm-cancel")?.addEventListener("click", close);
+  overlay.addEventListener("click", (ev) => {
+    if (ev.target === overlay) close();
+  });
+  overlay.querySelector(".d9-confirm-ok")?.addEventListener("click", () => {
+    close();
+    if (typeof onOk === "function") onOk();
+  });
 }
 
 function toggleHistoryItem(id) {
