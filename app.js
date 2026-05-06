@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.9 (selector controles no deselecciona)";
+const APP_VERSION = "v1.1.12 (historial reutilizar integrado)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3004,24 +3004,26 @@ function renderHistory() {
         </div>`;
 
     return `
-      <button class="history-item ${isOpen ? 'is-open' : ''}" data-history-id="${esc(itemId)}" type="button">
-        <div class="history-head-row">
-          <div class="history-copy">
-            <strong>${esc(item.cliente)}</strong>
-            <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
-            <div class="mini-text history-meta-line">${esc(item.vendedor)} · ${esc(item.status || "")}${item.error ? ' · ' + esc(item.error) : ''}</div>
+      <div class="history-item ${isOpen ? 'is-open' : ''}">
+        <button class="history-main-toggle" data-history-id="${esc(itemId)}" type="button">
+          <div class="history-head-row">
+            <div class="history-copy">
+              <strong>${esc(item.cliente)}</strong>
+              <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
+              <div class="mini-text history-meta-line">${esc(item.vendedor)} · ${esc(item.status || "")}${item.error ? ' · ' + esc(item.error) : ''}</div>
+            </div>
+            <div class="history-side">
+              <div class="product-price">${money(item.total)}</div>
+              <div class="history-toggle">${isOpen ? '▲' : '▼'}</div>
+            </div>
           </div>
-          <div class="history-side">
-            <div class="product-price">${money(item.total)}</div>
-            <div class="history-toggle">${isOpen ? '▲' : '▼'}</div>
-          </div>
-        </div>
+        </button>
         ${detailHtml}
-        <div class="history-actions" data-no-toggle>
+        <div class="history-actions-inline" data-no-toggle>
           <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
-          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button">🗑️</button>
+          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar del historial">🗑️ Borrar</button>
         </div>
-      </button>`;
+      </div>`;
   }).join('');
 }
 
@@ -3037,14 +3039,64 @@ function reuseHistoryItem(id) {
     precio: Number(x.precio || 0)
   }));
 
+  if (!state.selectedClient && item.cliente) {
+    state.selectedClient = {
+      id: item.cliente_id || `hist_${Date.now()}`,
+      nombre: item.cliente,
+      nombre_real: item.cliente,
+      telefono: "",
+      direccion: "",
+      ciudad: "",
+      ocasional: true,
+      lista_1: state.activePriceList || "lista_1"
+    };
+  }
+
+  closeAllModals();
+  state.historyOpenId = null;
+  renderQuickLabels();
+  renderSelectedClient();
+  renderProducts();
   renderCart();
-  showView("home");
-  toast("Pedido reutilizado.");
+  showView("order");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  toast("Pedido reutilizado como nuevo.");
+}
+
+function openDeleteHistoryConfirmD9(id) {
+  let modal = document.getElementById("historyDeleteConfirmModalD9");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "historyDeleteConfirmModalD9";
+    modal.className = "d9-confirm-modal hidden";
+    modal.innerHTML = `
+      <div class="d9-confirm-backdrop" data-history-delete-cancel></div>
+      <div class="d9-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="historyDeleteTitleD9">
+        <h3 id="historyDeleteTitleD9">Distribuidora 9 dice:</h3>
+        <p>¿Borrar este pedido del historial local?</p>
+        <small>Solo se borra de este dispositivo. No modifica la hoja de pedidos.</small>
+        <div class="d9-confirm-actions">
+          <button class="d9-confirm-cancel" data-history-delete-cancel type="button">Cancelar</button>
+          <button class="d9-confirm-danger" data-history-delete-accept type="button">Borrar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  modal.dataset.deleteId = id;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeDeleteHistoryConfirmD9() {
+  const modal = document.getElementById("historyDeleteConfirmModalD9");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  modal.dataset.deleteId = "";
 }
 
 function deleteHistoryItem(id) {
-  if (!confirm("¿Borrar este pedido del historial?")) return;
-
   const history = readJSON(STORAGE_KEYS.history, []);
   const filtered = history.filter(x => x.id !== id);
   saveJSON(STORAGE_KEYS.history, filtered);
@@ -3052,7 +3104,7 @@ function deleteHistoryItem(id) {
   if (state.historyOpenId === id) state.historyOpenId = null;
 
   renderHistory();
-  toast("Pedido eliminado del historial.");
+  toast("Pedido eliminado del historial local.");
 }
 
 function toggleHistoryItem(id) {
@@ -3340,7 +3392,24 @@ function bind() {
     const deleteHistory = ev.target.closest("[data-delete-history]");
     if (deleteHistory) {
       ev.stopPropagation();
-      deleteHistoryItem(deleteHistory.dataset.deleteHistory);
+      openDeleteHistoryConfirmD9(deleteHistory.dataset.deleteHistory);
+      return;
+    }
+
+    const deleteCancel = ev.target.closest("[data-history-delete-cancel]");
+    if (deleteCancel) {
+      ev.preventDefault();
+      closeDeleteHistoryConfirmD9();
+      return;
+    }
+
+    const deleteAccept = ev.target.closest("[data-history-delete-accept]");
+    if (deleteAccept) {
+      ev.preventDefault();
+      const modal = document.getElementById("historyDeleteConfirmModalD9");
+      const deleteId = modal?.dataset?.deleteId || "";
+      closeDeleteHistoryConfirmD9();
+      if (deleteId) deleteHistoryItem(deleteId);
       return;
     }
 
