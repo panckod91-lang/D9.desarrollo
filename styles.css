@@ -3306,31 +3306,49 @@ button:active,
   transform: scale(0.95);
 }
 
-/* === D9 v1.1.10: modal invitado arriba para no tapar 'Usar este cliente' con teclado === */
+
+/* === D9 v1.1.10: modal cliente ocasional arriba para no tapar botón con teclado === */
 #occasionalClientModal{
   align-items:flex-start !important;
   justify-content:center !important;
-  padding:10px 0 calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-top:max(10px, env(safe-area-inset-top)) !important;
+  padding-bottom:10px !important;
   overflow:auto !important;
 }
 
 #occasionalClientModal .modal-panel{
-  margin-top:8px !important;
-  border-radius:26px !important;
-  max-height:calc(100dvh - 24px) !important;
-  padding-bottom:16px !important;
+  width:min(calc(100% - 20px), 520px) !important;
+  max-height:calc(100dvh - 22px - env(safe-area-inset-top)) !important;
+  overflow:auto !important;
+  border-radius:24px !important;
+  padding:14px 14px 16px !important;
+  margin:0 auto !important;
+  box-shadow:0 10px 30px rgba(7,25,62,.20) !important;
+}
+
+#occasionalClientModal .modal-head-row{
+  align-items:center !important;
+  margin-bottom:10px !important;
+}
+
+#occasionalClientModal .modal-head-row h3{
+  font-size:1.12rem !important;
+  line-height:1.15 !important;
+}
+
+#occasionalClientModal .input,
+#occasionalClientModal .select{
+  min-height:44px !important;
+  margin-bottom:6px !important;
 }
 
 #occasionalClientModal .sticky-modal-actions{
   position:sticky !important;
   bottom:0 !important;
-  padding-top:12px !important;
-  padding-bottom:4px !important;
-  background:#fff !important;
+  padding-top:8px !important;
+  background:linear-gradient(to bottom, rgba(255,255,255,.88), #fff 35%) !important;
 }
 
-@supports not (height: 100dvh){
-  #occasionalClientModal .modal-panel{
-    max-height:calc(100vh - 24px) !important;
-  }
+#occasionalClientModal #btnSaveOccasionalClient{
+  min-height:50px !important;
 }
