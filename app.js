@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.12 (historial reutilizar integrado)";
+const APP_VERSION = "v1.1.13 (historial reutilizar fix)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2980,7 +2980,7 @@ function renderHistory() {
 
   list.className = "history-list";
   list.innerHTML = history.map(item => {
-    const itemId = item.id || `${item.fecha}_${item.cliente}_${item.total}`;
+    const itemId = getHistoryItemKeyD9(item);
     const isOpen = state.historyOpenId === itemId;
     const items = Array.isArray(item.items) ? item.items : [];
     const detailHtml = items.length
@@ -3027,26 +3027,32 @@ function renderHistory() {
   }).join('');
 }
 
+function getHistoryItemKeyD9(item) {
+  return String(item?.id || `${item?.fecha || ""}_${item?.cliente || ""}_${item?.total || ""}`);
+}
+
 function reuseHistoryItem(id) {
   const history = readJSON(STORAGE_KEYS.history, []);
-  const item = history.find(x => x.id === id);
+  const wantedId = String(id || "");
+  const item = history.find(x => getHistoryItemKeyD9(x) === wantedId);
   if (!item) return toast("No encontré el pedido.");
 
   state.cart = (item.items || []).map(x => ({
-    id: x.id,
-    nombre: x.nombre,
+    id: x.id || x.id_producto || x.producto_id || "",
+    id_producto: x.id_producto || x.id || x.producto_id || "",
+    nombre: x.nombre || x.producto || "",
     cantidad: Number(x.cantidad || 1),
     precio: Number(x.precio || 0)
-  }));
+  })).filter(x => x.nombre && x.cantidad > 0);
 
-  if (!state.selectedClient && item.cliente) {
+  if (item.cliente) {
     state.selectedClient = {
       id: item.cliente_id || `hist_${Date.now()}`,
       nombre: item.cliente,
       nombre_real: item.cliente,
-      telefono: "",
-      direccion: "",
-      ciudad: "",
+      telefono: item.telefono || "",
+      direccion: item.direccion || "",
+      ciudad: item.ciudad || "",
       ocasional: true,
       lista_1: state.activePriceList || "lista_1"
     };
@@ -3056,6 +3062,7 @@ function reuseHistoryItem(id) {
   state.historyOpenId = null;
   renderQuickLabels();
   renderSelectedClient();
+  renderOrderPriceListControls();
   renderProducts();
   renderCart();
   showView("order");
