@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.15 (reutilizar historial simple fix)";
+const APP_VERSION = "v1.1.9 (selector controles no deselecciona)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2979,8 +2979,8 @@ function renderHistory() {
   }
 
   list.className = "history-list";
-  list.innerHTML = history.map((item, historyIndex) => {
-    const itemId = getHistoryItemKeyD9(item);
+  list.innerHTML = history.map(item => {
+    const itemId = item.id || `${item.fecha}_${item.cliente}_${item.total}`;
     const isOpen = state.historyOpenId === itemId;
     const items = Array.isArray(item.items) ? item.items : [];
     const detailHtml = items.length
@@ -3004,157 +3004,55 @@ function renderHistory() {
         </div>`;
 
     return `
-      <div class="history-item ${isOpen ? 'is-open' : ''}">
-        <button class="history-main-toggle" data-history-id="${esc(itemId)}" type="button">
-          <div class="history-head-row">
-            <div class="history-copy">
-              <strong>${esc(item.cliente)}</strong>
-              <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
-              <div class="mini-text history-meta-line">${esc(item.vendedor)} · ${esc(item.status || "")}${item.error ? ' · ' + esc(item.error) : ''}</div>
-            </div>
-            <div class="history-side">
-              <div class="product-price">${money(item.total)}</div>
-              <div class="history-toggle">${isOpen ? '▲' : '▼'}</div>
-            </div>
+      <button class="history-item ${isOpen ? 'is-open' : ''}" data-history-id="${esc(itemId)}" type="button">
+        <div class="history-head-row">
+          <div class="history-copy">
+            <strong>${esc(item.cliente)}</strong>
+            <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
+            <div class="mini-text history-meta-line">${esc(item.vendedor)} · ${esc(item.status || "")}${item.error ? ' · ' + esc(item.error) : ''}</div>
           </div>
-        </button>
-        ${detailHtml}
-        <div class="history-actions-inline" data-no-toggle>
-          <button class="history-action-btn" data-reuse-history="${esc(itemId)}" data-reuse-history-index="${historyIndex}" type="button">↻ Reutilizar</button>
-          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" data-delete-history-index="${historyIndex}" type="button" aria-label="Borrar del historial">🗑️ Borrar</button>
+          <div class="history-side">
+            <div class="product-price">${money(item.total)}</div>
+            <div class="history-toggle">${isOpen ? '▲' : '▼'}</div>
+          </div>
         </div>
-      </div>`;
+        ${detailHtml}
+        <div class="history-actions" data-no-toggle>
+          <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
+          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button">🗑️</button>
+        </div>
+      </button>`;
   }).join('');
-  bindHistoryActionButtonsD9(list);
 }
 
-function bindHistoryActionButtonsD9(list) {
-  if (!list) return;
-
-  list.querySelectorAll('[data-reuse-history]').forEach(btn => {
-    btn.onclick = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      reuseHistoryItem(btn.dataset.reuseHistory || '', btn.dataset.reuseHistoryIndex || '');
-    };
-  });
-
-  list.querySelectorAll('[data-delete-history]').forEach(btn => {
-    btn.onclick = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      openDeleteHistoryConfirmD9(btn.dataset.deleteHistory || '');
-    };
-  });
-}
-
-function getHistoryItemKeyD9(item) {
-  return String(item?.id || `${item?.fecha || ""}_${item?.cliente || ""}_${item?.total || ""}`);
-}
-
-function reuseHistoryItem(id, index) {
+function reuseHistoryItem(id) {
   const history = readJSON(STORAGE_KEYS.history, []);
-  const idx = Number(index);
-  const wantedId = String(id || "").trim();
-
-  // Primero intenta por índice, porque es lo más estable para el historial local.
-  let item = Number.isInteger(idx) && idx >= 0 ? history[idx] : null;
-
-  // Fallback por id/key para historiales viejos o restaurados.
-  if (!item && wantedId) {
-    item = history.find(x => {
-      const key = getHistoryItemKeyD9(x);
-      return key === wantedId || String(x?.id || "") === wantedId;
-    });
-  }
-
+  const item = history.find(x => x.id === id);
   if (!item) return toast("No encontré el pedido.");
 
-  // Lógica simple: copiar el historial como base del nuevo pedido.
-  // No reconstruye desde catálogo ni toca envío/Sheet.
-  const sourceItems = Array.isArray(item.items)
-    ? item.items
-    : (Array.isArray(item.carrito) ? item.carrito : []);
-
-  const reusedItems = sourceItems.map(x => ({
-    id: String(x.id || x.id_producto || x.producto_id || x.nombre || "").trim(),
-    id_producto: String(x.id_producto || x.producto_id || x.id || "").trim(),
-    nombre: String(x.nombre || x.producto || "").trim(),
+  state.cart = (item.items || []).map(x => ({
+    id: x.id,
+    nombre: x.nombre,
     cantidad: Number(x.cantidad || 1),
     precio: Number(x.precio || 0)
-  })).filter(x => x.nombre && x.cantidad > 0);
+  }));
 
-  if (!reusedItems.length) return toast("Ese historial no tiene productos reutilizables.");
-
-  state.cart = reusedItems;
-
-  if (item.cliente) {
-    state.selectedClient = {
-      id: item.cliente_id || `hist_${Date.now()}`,
-      nombre: item.cliente,
-      nombre_real: item.cliente,
-      telefono: item.telefono || "",
-      direccion: item.direccion || "",
-      ciudad: item.ciudad || "",
-      ocasional: true,
-      lista_1: state.activePriceList || "lista_1"
-    };
-  }
-
-  closeAllModals();
-  state.historyOpenId = null;
-  renderQuickLabels();
-  renderSelectedClient();
-  renderOrderPriceListControls();
-  renderProducts();
   renderCart();
-  showView("order");
-  window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 80);
-  toast("Pedido reutilizado como nuevo.");
-}
-
-function openDeleteHistoryConfirmD9(id) {
-  let modal = document.getElementById("historyDeleteConfirmModalD9");
-  if (!modal) {
-    modal = document.createElement("div");
-    modal.id = "historyDeleteConfirmModalD9";
-    modal.className = "d9-confirm-modal hidden";
-    modal.innerHTML = `
-      <div class="d9-confirm-backdrop" data-history-delete-cancel></div>
-      <div class="d9-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="historyDeleteTitleD9">
-        <h3 id="historyDeleteTitleD9">Distribuidora 9 dice:</h3>
-        <p>¿Borrar este pedido del historial local?</p>
-        <small>Solo se borra de este dispositivo. No modifica la hoja de pedidos.</small>
-        <div class="d9-confirm-actions">
-          <button class="d9-confirm-cancel" data-history-delete-cancel type="button">Cancelar</button>
-          <button class="d9-confirm-danger" data-history-delete-accept type="button">Borrar</button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-  }
-
-  modal.dataset.deleteId = id;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
-}
-
-function closeDeleteHistoryConfirmD9() {
-  const modal = document.getElementById("historyDeleteConfirmModalD9");
-  if (!modal) return;
-  modal.classList.add("hidden");
-  modal.setAttribute("aria-hidden", "true");
-  modal.dataset.deleteId = "";
+  showView("home");
+  toast("Pedido reutilizado.");
 }
 
 function deleteHistoryItem(id) {
+  if (!confirm("¿Borrar este pedido del historial?")) return;
+
   const history = readJSON(STORAGE_KEYS.history, []);
-  const filtered = history.filter(x => getHistoryItemKeyD9(x) !== String(id || "") && String(x?.id || "") !== String(id || ""));
+  const filtered = history.filter(x => x.id !== id);
   saveJSON(STORAGE_KEYS.history, filtered);
 
   if (state.historyOpenId === id) state.historyOpenId = null;
 
   renderHistory();
-  toast("Pedido eliminado del historial local.");
+  toast("Pedido eliminado del historial.");
 }
 
 function toggleHistoryItem(id) {
@@ -3435,31 +3333,14 @@ function bind() {
     const reuseHistory = ev.target.closest("[data-reuse-history]");
     if (reuseHistory) {
       ev.stopPropagation();
-      reuseHistoryItem(reuseHistory.dataset.reuseHistory || '', reuseHistory.dataset.reuseHistoryIndex || '');
+      reuseHistoryItem(reuseHistory.dataset.reuseHistory);
       return;
     }
 
     const deleteHistory = ev.target.closest("[data-delete-history]");
     if (deleteHistory) {
       ev.stopPropagation();
-      openDeleteHistoryConfirmD9(deleteHistory.dataset.deleteHistory);
-      return;
-    }
-
-    const deleteCancel = ev.target.closest("[data-history-delete-cancel]");
-    if (deleteCancel) {
-      ev.preventDefault();
-      closeDeleteHistoryConfirmD9();
-      return;
-    }
-
-    const deleteAccept = ev.target.closest("[data-history-delete-accept]");
-    if (deleteAccept) {
-      ev.preventDefault();
-      const modal = document.getElementById("historyDeleteConfirmModalD9");
-      const deleteId = modal?.dataset?.deleteId || "";
-      closeDeleteHistoryConfirmD9();
-      if (deleteId) deleteHistoryItem(deleteId);
+      deleteHistoryItem(deleteHistory.dataset.deleteHistory);
       return;
     }
 
