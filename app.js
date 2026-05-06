@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.8 (whatsapp limpio invitado nombre)";
+const APP_VERSION = "v1.1.9 (selector controles no deselecciona)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -668,6 +668,26 @@ function bindInlineQtyCaptureD9() {
   }, true);
 }
 
+
+
+// Evita que al tocar el fondo de una card ya seleccionada (especialmente zona derecha de controles)
+// se dispare el toggle/deselección. Solo los botones - y + modifican cantidad.
+function bindSelectedProductNoToggleD9() {
+  if (window.__d9SelectedProductNoToggleBound) return;
+  window.__d9SelectedProductNoToggleBound = true;
+
+  document.addEventListener("click", (e) => {
+    const selectedCard = e.target.closest?.("#productModal .product-picker.is-selected");
+    if (!selectedCard) return;
+
+    // Los botones de cantidad tienen su propio handler en captura.
+    if (e.target.closest?.("[data-product-qty]")) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+  }, true);
+}
 
 
 function injectPriceListCleanStickyD9() {
@@ -2347,7 +2367,7 @@ function renderProducts() {
       const precio = Number(cartItem?.precio || productPrice(p) || 0);
       const subtotal = cantidad * precio;
       return `
-        <button class="product-item product-picker ${selected ? "is-selected" : ""}" data-toggle-product="${esc(p.id)}" type="button">
+        <button class="product-item product-picker ${selected ? "is-selected" : ""}" data-toggle-product="${esc(p.id)}" ${selected ? 'data-no-toggle="true"' : ''} type="button">
           <div class="product-copy product-main-d9" ${selected ? 'data-no-toggle="true"' : ''}>
             <strong>${esc(p.nombre)}</strong>
             <div class="option-meta">${esc(productMetaLine(p))}</div>
@@ -3153,6 +3173,7 @@ function bind() {
 
 
   bindInlineQtyCaptureD9();
+  bindSelectedProductNoToggleD9();
 
   document.addEventListener("click", (e) => {
     const insideCategoryBtn = e.target.closest("#btnCategoryInsideProductModal");
