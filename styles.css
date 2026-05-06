@@ -3294,3 +3294,14 @@ button:active,
     font-size:1rem !important;
   }
 }
+.btn-cant {
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+}
+
+.btn-cant:active {
+  transform: scale(0.95);
+}
