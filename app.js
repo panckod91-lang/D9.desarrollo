@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.14 (historial reutilizar click fix)";
+const APP_VERSION = "v1.1.15 (reutilizar historial simple fix)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2979,7 +2979,7 @@ function renderHistory() {
   }
 
   list.className = "history-list";
-  list.innerHTML = history.map(item => {
+  list.innerHTML = history.map((item, historyIndex) => {
     const itemId = getHistoryItemKeyD9(item);
     const isOpen = state.historyOpenId === itemId;
     const items = Array.isArray(item.items) ? item.items : [];
@@ -3020,8 +3020,8 @@ function renderHistory() {
         </button>
         ${detailHtml}
         <div class="history-actions-inline" data-no-toggle>
-          <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
-          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar del historial">🗑️ Borrar</button>
+          <button class="history-action-btn" data-reuse-history="${esc(itemId)}" data-reuse-history-index="${historyIndex}" type="button">↻ Reutilizar</button>
+          <button class="history-delete-btn" data-delete-history="${esc(itemId)}" data-delete-history-index="${historyIndex}" type="button" aria-label="Borrar del historial">🗑️ Borrar</button>
         </div>
       </div>`;
   }).join('');
@@ -3035,7 +3035,7 @@ function bindHistoryActionButtonsD9(list) {
     btn.onclick = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      reuseHistoryItem(btn.dataset.reuseHistory || '');
+      reuseHistoryItem(btn.dataset.reuseHistory || '', btn.dataset.reuseHistoryIndex || '');
     };
   });
 
@@ -3052,35 +3052,37 @@ function getHistoryItemKeyD9(item) {
   return String(item?.id || `${item?.fecha || ""}_${item?.cliente || ""}_${item?.total || ""}`);
 }
 
-function reuseHistoryItem(id) {
+function reuseHistoryItem(id, index) {
   const history = readJSON(STORAGE_KEYS.history, []);
+  const idx = Number(index);
   const wantedId = String(id || "").trim();
-  const item = history.find(x => {
-    const key = getHistoryItemKeyD9(x);
-    return key === wantedId || String(x?.id || "") === wantedId;
-  });
+
+  // Primero intenta por índice, porque es lo más estable para el historial local.
+  let item = Number.isInteger(idx) && idx >= 0 ? history[idx] : null;
+
+  // Fallback por id/key para historiales viejos o restaurados.
+  if (!item && wantedId) {
+    item = history.find(x => {
+      const key = getHistoryItemKeyD9(x);
+      return key === wantedId || String(x?.id || "") === wantedId;
+    });
+  }
 
   if (!item) return toast("No encontré el pedido.");
 
+  // Lógica simple: copiar el historial como base del nuevo pedido.
+  // No reconstruye desde catálogo ni toca envío/Sheet.
   const sourceItems = Array.isArray(item.items)
     ? item.items
     : (Array.isArray(item.carrito) ? item.carrito : []);
 
-  const reusedItems = sourceItems.map(x => {
-    const idProducto = String(x.id || x.id_producto || x.producto_id || "").trim();
-    const productoBase = idProducto ? state.products.find(p => String(p.id || "").trim() === idProducto) : null;
-    const nombre = x.nombre || x.producto || productoBase?.nombre || "";
-    const precio = Number(productoBase ? productPrice(productoBase) : (x.precio || 0));
-
-    return {
-      ...(productoBase || {}),
-      id: idProducto || productoBase?.id || nombre,
-      id_producto: idProducto || productoBase?.id || "",
-      nombre,
-      cantidad: Number(x.cantidad || 1),
-      precio
-    };
-  }).filter(x => x.nombre && x.cantidad > 0);
+  const reusedItems = sourceItems.map(x => ({
+    id: String(x.id || x.id_producto || x.producto_id || x.nombre || "").trim(),
+    id_producto: String(x.id_producto || x.producto_id || x.id || "").trim(),
+    nombre: String(x.nombre || x.producto || "").trim(),
+    cantidad: Number(x.cantidad || 1),
+    precio: Number(x.precio || 0)
+  })).filter(x => x.nombre && x.cantidad > 0);
 
   if (!reusedItems.length) return toast("Ese historial no tiene productos reutilizables.");
 
@@ -3433,7 +3435,7 @@ function bind() {
     const reuseHistory = ev.target.closest("[data-reuse-history]");
     if (reuseHistory) {
       ev.stopPropagation();
-      reuseHistoryItem(reuseHistory.dataset.reuseHistory);
+      reuseHistoryItem(reuseHistory.dataset.reuseHistory || '', reuseHistory.dataset.reuseHistoryIndex || '');
       return;
     }
 
