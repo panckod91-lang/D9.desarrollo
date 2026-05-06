@@ -2422,22 +2422,31 @@ function generateMessageText(payload = null) {
 
   const clienteTexto = source.cliente?.nombre_real || source.cliente?.nombre || "";
   const unidadesTotales = source.carrito.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+  const rol = String(source.vendedor?.rol || "").trim().toLowerCase();
 
-  const lines = [
-    `Cliente: ${clienteTexto}`,
-    source.vendedor?.nombre ? `Usuario: ${source.vendedor.nombre}` : "",
-    ""
-  ].filter(line => line !== "");
+  const lines = ["🛒🛒"];
+
+  if (rol === "cliente") {
+    lines.push(`Cliente: ${source.vendedor?.nombre || clienteTexto}`);
+  } else if (rol === "vendedor") {
+    lines.push(`Cliente: ${clienteTexto}`);
+    lines.push(`Vendedor: ${source.vendedor?.nombre || ""}`);
+  } else {
+    lines.push("Invitado");
+    const direccion = source.cliente?.direccion || "";
+    if (direccion) lines.push(`Dirección: ${direccion}`);
+  }
+
+  lines.push(`Fecha: ${new Date().toLocaleString('es-AR', {hour12:false})}`);
+  lines.push("────────────────────");
 
   source.carrito.forEach((item, index) => {
-    const code = productCode(item);
     lines.push(`${index + 1}) ${item.nombre}`);
-    lines.push(`   ${code ? `Cód: ${code} · ` : ""}Cant: ${Number(item.cantidad || 0)}`);
+    lines.push(`   · Cant: ${Number(item.cantidad || 0)}`);
   });
 
   lines.push("────────────────────");
   lines.push(`Items: ${source.carrito.length} · Unidades: ${unidadesTotales}`);
-  lines.push(`TOTAL: ${money(source.total)}`);
   return lines.join("\n");
 }
 
