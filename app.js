@@ -2562,7 +2562,7 @@ function renderCart() {
           <button class="qty-btn" data-qty="minus" data-id="${esc(item.id)}" type="button">−</button>
           <div class="qty-value">${item.cantidad}</div>
           <button class="qty-btn" data-qty="plus" data-id="${esc(item.id)}" type="button">+</button>
-          <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">Cant.</button>
+          <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">👉Cant.✏️</button>
           <div class="product-price cart-line-total-d9">${money(item.precio * item.cantidad)}</div>
         </div>
       </div>`).join("");
