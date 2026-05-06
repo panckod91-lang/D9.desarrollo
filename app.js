@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.13 (historial reutilizar fix)";
+const APP_VERSION = "v1.1.14 (historial reutilizar click fix)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3025,6 +3025,27 @@ function renderHistory() {
         </div>
       </div>`;
   }).join('');
+  bindHistoryActionButtonsD9(list);
+}
+
+function bindHistoryActionButtonsD9(list) {
+  if (!list) return;
+
+  list.querySelectorAll('[data-reuse-history]').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      reuseHistoryItem(btn.dataset.reuseHistory || '');
+    };
+  });
+
+  list.querySelectorAll('[data-delete-history]').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openDeleteHistoryConfirmD9(btn.dataset.deleteHistory || '');
+    };
+  });
 }
 
 function getHistoryItemKeyD9(item) {
@@ -3033,17 +3054,37 @@ function getHistoryItemKeyD9(item) {
 
 function reuseHistoryItem(id) {
   const history = readJSON(STORAGE_KEYS.history, []);
-  const wantedId = String(id || "");
-  const item = history.find(x => getHistoryItemKeyD9(x) === wantedId);
+  const wantedId = String(id || "").trim();
+  const item = history.find(x => {
+    const key = getHistoryItemKeyD9(x);
+    return key === wantedId || String(x?.id || "") === wantedId;
+  });
+
   if (!item) return toast("No encontré el pedido.");
 
-  state.cart = (item.items || []).map(x => ({
-    id: x.id || x.id_producto || x.producto_id || "",
-    id_producto: x.id_producto || x.id || x.producto_id || "",
-    nombre: x.nombre || x.producto || "",
-    cantidad: Number(x.cantidad || 1),
-    precio: Number(x.precio || 0)
-  })).filter(x => x.nombre && x.cantidad > 0);
+  const sourceItems = Array.isArray(item.items)
+    ? item.items
+    : (Array.isArray(item.carrito) ? item.carrito : []);
+
+  const reusedItems = sourceItems.map(x => {
+    const idProducto = String(x.id || x.id_producto || x.producto_id || "").trim();
+    const productoBase = idProducto ? state.products.find(p => String(p.id || "").trim() === idProducto) : null;
+    const nombre = x.nombre || x.producto || productoBase?.nombre || "";
+    const precio = Number(productoBase ? productPrice(productoBase) : (x.precio || 0));
+
+    return {
+      ...(productoBase || {}),
+      id: idProducto || productoBase?.id || nombre,
+      id_producto: idProducto || productoBase?.id || "",
+      nombre,
+      cantidad: Number(x.cantidad || 1),
+      precio
+    };
+  }).filter(x => x.nombre && x.cantidad > 0);
+
+  if (!reusedItems.length) return toast("Ese historial no tiene productos reutilizables.");
+
+  state.cart = reusedItems;
 
   if (item.cliente) {
     state.selectedClient = {
@@ -3066,7 +3107,7 @@ function reuseHistoryItem(id) {
   renderProducts();
   renderCart();
   showView("order");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 80);
   toast("Pedido reutilizado como nuevo.");
 }
 
@@ -3105,7 +3146,7 @@ function closeDeleteHistoryConfirmD9() {
 
 function deleteHistoryItem(id) {
   const history = readJSON(STORAGE_KEYS.history, []);
-  const filtered = history.filter(x => x.id !== id);
+  const filtered = history.filter(x => getHistoryItemKeyD9(x) !== String(id || "") && String(x?.id || "") !== String(id || ""));
   saveJSON(STORAGE_KEYS.history, filtered);
 
   if (state.historyOpenId === id) state.historyOpenId = null;
