@@ -3414,42 +3414,10 @@ button:active,
 }
 
 
-/* D9 v1.2.2 - Mostrador flujo base */
-#view-mostrador .quick-field {
-  width: 100%;
-  border: 2px solid rgba(20, 120, 170, .15);
-  background: rgba(255,255,255,.74);
-  border-radius: 22px;
-  padding: 18px 20px;
-  text-align: left;
-  box-shadow: none;
-}
-#view-mostrador .quick-field span {
-  display: block;
-  font-weight: 900;
-  letter-spacing: .08em;
-  color: #3d9db2;
-  font-size: .82rem;
-  margin-bottom: 8px;
-}
-#view-mostrador .quick-field strong {
-  display: block;
-  color: #132945;
-  font-size: 1.08rem;
-}
-#view-mostrador .quick-field small {
-  display: block;
-  color: #6b7d8b;
-  margin-top: 5px;
-  font-size: .86rem;
-}
-.mostrador-stepper-d9 {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.mostrador-qty-value-d9 {
-  min-width: 82px;
-  justify-content: center;
-  font-weight: 900;
-}
+/* D9 v1.2.3 mostrador: flujo con selectores de pedido */
+.mostrador-picker-card-d9{ margin-top: 14px; }
+.mostrador-line-controls-d9{ display:grid; grid-template-columns:48px minmax(72px,auto) 48px 1fr; align-items:center; gap:10px; }
+.qty-step-btn-d9{ width:48px; height:48px; border:0; border-radius:14px; background:#fff; color:#173454; font-size:28px; font-weight:950; box-shadow:0 8px 20px rgba(23,52,84,.08); }
+.mostrador-qty-value-d9{ min-width:72px; height:48px; padding:0 12px; border:0; border-radius:14px; background:#eef8ff; color:#245775; font-size:20px; font-weight:900; }
+.mostrador-line-controls-d9 strong{ justify-self:end; font-size:22px; }
+@media(max-width:420px){ .mostrador-line-controls-d9{ grid-template-columns:44px minmax(62px,auto) 44px 1fr; gap:8px;} .qty-step-btn-d9{width:44px;height:44px;} .mostrador-qty-value-d9{height:44px;min-width:62px;font-size:18px;} }

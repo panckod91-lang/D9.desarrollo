@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-v32-mostrador-home";
+const CACHE_NAME = "d9-dev-cache-v32";
 const URLS = [
   "./",
   "./index.html",

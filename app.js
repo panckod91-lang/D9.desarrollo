@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.2-dev (mostrador flujo base)";
+const APP_VERSION = "v1.2.3-dev (mostrador flujo selector pedido)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -51,7 +51,7 @@ const state = {
   qtyModalItemId: "",
   mostradorSearch: "",
   mostradorCart: [],
-  mostradorSelecting: false
+  productPickerMode: "order"
 };
 
 const bannerCarousel = {
@@ -671,11 +671,6 @@ function bindInlineQtyCaptureD9() {
 
     lastQtyTap = { id, action, time: now };
 
-    if (state.mostradorSelecting || state.currentView === "mostrador") {
-      updateMostradorQtyD9(id, action === "plus" ? 1 : -1);
-      return;
-    }
-
     if (action === "plus") updateQty(id, 1);
     if (action === "minus") updateQty(id, -1);
   };
@@ -1244,10 +1239,6 @@ function closeModal(name) {
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
   if (name === "product") {
-    if (state.mostradorSelecting) {
-      state.mostradorSelecting = false;
-      renderMostradorD9();
-    }
     renderQuickLabels();
     renderCart();
   }
@@ -2015,7 +2006,7 @@ function renderQuickLabels() {
 function renderClients() {
   const term = $("#clientSearch").value.trim().toLowerCase();
   const list = $("#clientList");
-  const canBrowseClients = state.seller?.rol === "vendedor";
+  const canBrowseClients = ["vendedor", "mostrador"].includes(String(state.seller?.rol || "").toLowerCase());
 
   const base = canBrowseClients
     ? state.clients
@@ -2050,7 +2041,7 @@ function selectClient(id) {
   if (!c) return;
   const previousClientId = state.selectedClient?.id || "";
   state.selectedClient = c;
-  if (state.seller?.rol === "vendedor") {
+  if (["vendedor", "mostrador"].includes(String(state.seller?.rol || "").toLowerCase())) {
     const previousActive = state.activePriceList || "lista_1";
     const nextList = c.lista_1 || "lista_1";
     const changedClient = previousClientId && String(previousClientId) !== String(c.id);
@@ -2068,6 +2059,7 @@ function selectClient(id) {
   renderClients();
   renderQuickLabels();
   renderCart();
+  if (typeof renderMostradorD9 === "function") renderMostradorD9();
   closeModal("client");
 }
 
@@ -2358,6 +2350,7 @@ function selectCategory(category) {
   renderCategories();
   renderProducts();
   renderQuickLabels();
+  if (typeof renderMostradorD9 === "function") renderMostradorD9();
   closeModal("category");
 }
 
@@ -2365,6 +2358,8 @@ function renderProducts() {
   const term = $("#productSearch").value.trim().toLowerCase();
   const cat = state.selectedCategory;
   const list = $("#productList");
+  const pickerMode = state.productPickerMode === "mostrador" ? "mostrador" : "order";
+  const activeCart = pickerMode === "mostrador" ? state.mostradorCart : state.cart;
 
   let filtered = [];
 
@@ -2389,8 +2384,7 @@ function renderProducts() {
 
   list.innerHTML = filtered.length
     ? filtered.map(p => {
-      const pickingMostrador = state.mostradorSelecting || state.currentView === "mostrador";
-      const cartItem = (pickingMostrador ? state.mostradorCart : state.cart).find(x => String(x.id) === String(p.id));
+      const cartItem = state.cart.find(x => x.id === p.id);
       const selected = !!cartItem;
       const cantidad = Number(cartItem?.cantidad || 1);
       const precio = Number(cartItem?.precio || productPrice(p) || 0);
@@ -2417,6 +2411,19 @@ function renderProducts() {
 }
 
 function toggleProduct(id) {
+  if (state.productPickerMode === "mostrador") {
+    const existing = state.mostradorCart.find(x => String(x.id) === String(id));
+    if (existing) {
+      state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
+    } else {
+      const p = state.products.find(x => String(x.id) === String(id));
+      if (!p) return;
+      state.mostradorCart.push({ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 });
+    }
+    renderProducts();
+    renderMostradorD9();
+    return;
+  }
   const existing = state.cart.find(x => x.id === id);
   if (existing) {
     state.cart = state.cart.filter(x => x.id !== id);
@@ -2431,6 +2438,16 @@ function toggleProduct(id) {
 }
 
 function updateQty(id, delta) {
+  if (state.productPickerMode === "mostrador") {
+    const item = state.mostradorCart.find(x => String(x.id) === String(id));
+    if (!item) return;
+    item.cantidad = Number(item.cantidad || 0) + delta;
+    item.precio = productPrice(item);
+    if (item.cantidad <= 0) state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
+    renderProducts();
+    renderMostradorD9();
+    return;
+  }
   const item = state.cart.find(x => x.id === id);
   if (!item) return;
   item.cantidad += delta;
@@ -3295,7 +3312,7 @@ function bind() {
     }
   });
 
-  $("#btnGoOrder").addEventListener("click", () => showView("order"));
+  $("#btnGoOrder").addEventListener("click", () => { state.productPickerMode = "order"; showView("order"); });
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
   document.addEventListener("click", (ev) => { const b = ev.target.closest("#btnGoMostrador"); if (b) { renderMostradorD9(); showView("mostrador"); } });
@@ -3369,8 +3386,28 @@ function bind() {
       openOccasionalClientModal();
       return;
     }
+    state.productPickerMode = "order";
     renderProducts();
     openModal("product");
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (ev.target.closest("#btnMostradorOpenClients")) {
+      renderClients();
+      openModal("client");
+      return;
+    }
+    if (ev.target.closest("#btnMostradorOpenCategories")) {
+      renderCategories();
+      openModal("category");
+      return;
+    }
+    if (ev.target.closest("#btnMostradorOpenProducts")) {
+      state.productPickerMode = "mostrador";
+      renderProducts();
+      openModal("product");
+      return;
+    }
   });
 
   document.addEventListener("input", (ev) => {
@@ -3378,28 +3415,10 @@ function bind() {
   });
 
   document.addEventListener("click", (ev) => {
-    if (ev.target.closest("#btnMostradorClient")) {
-      if (state.seller?.rol === "cliente") return;
-      renderClients();
-      openModal("client");
-      return;
-    }
-    if (ev.target.closest("#btnMostradorCategory")) {
-      renderCategories();
-      openModal("category");
-      return;
-    }
-    if (ev.target.closest("#btnMostradorProducts")) {
-      state.mostradorSelecting = true;
-      renderProducts();
-      openModal("product");
-      return;
-    }
-
     const addMost = ev.target.closest("[data-mostrador-add]");
     if (addMost) { addMostradorProductD9(addMost.dataset.mostradorAdd); return; }
-    const stepMost = ev.target.closest("[data-mostrador-step]");
-    if (stepMost) { updateMostradorQtyD9(stepMost.dataset.mostradorStep, stepMost.dataset.step); return; }
+    const deltaMost = ev.target.closest("[data-mostrador-delta]");
+    if (deltaMost) { updateMostradorQtyDeltaD9(deltaMost.dataset.mostradorDelta, Number(deltaMost.dataset.delta || 0)); return; }
     const qtyMost = ev.target.closest("[data-mostrador-qty]");
     if (qtyMost) { editMostradorQtyD9(qtyMost.dataset.mostradorQty); return; }
     const remMost = ev.target.closest("[data-mostrador-remove]");
@@ -3424,13 +3443,7 @@ function bind() {
     if (cat) selectCategory(cat.dataset.category);
 
     const toggle = ev.target.closest("[data-toggle-product]");
-    if (toggle && !ev.target.closest("[data-no-toggle]")) {
-      if (state.mostradorSelecting || state.currentView === "mostrador") {
-        addMostradorProductD9(toggle.dataset.toggleProduct);
-      } else {
-        toggleProduct(toggle.dataset.toggleProduct);
-      }
-    }
+    if (toggle && !ev.target.closest("[data-no-toggle]")) toggleProduct(toggle.dataset.toggleProduct);
 
     const qty = ev.target.closest("[data-qty]");
     if (qty) updateQty(qty.dataset.id, qty.dataset.qty === "plus" ? 1 : -1);
@@ -3531,27 +3544,28 @@ function hydrateSeller() {
 function mostradorTotalD9() {
   return state.mostradorCart.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * (Number(item.precio) || 0), 0);
 }
+function renderMostradorQuickLabelsD9() {
+  const client = document.getElementById("mostradorClientLabel");
+  const category = document.getElementById("mostradorCategoryLabel");
+  const products = document.getElementById("mostradorProductsLabel");
+  if (client) client.textContent = state.selectedClient
+    ? (state.selectedClient.ocasional ? (state.selectedClient.nombre_real || state.selectedClient.nombre || "Cliente nuevo / ocasional") : state.selectedClient.nombre)
+    : "Seleccionar cliente";
+  if (category) category.textContent = state.selectedCategory ? cleanCategory(state.selectedCategory) : "Todas las categorías";
+  if (products) products.textContent = state.mostradorCart.length ? `${state.mostradorCart.length} productos seleccionados` : "Seleccionar productos";
+}
+
+function mostradorQtyTextD9(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return "0";
+  return String(n).replace(".", ",");
+}
+
 function renderMostradorD9() {
   const cartBox = $("#mostradorCartList");
   const totalEl = $("#mostradorTotal");
   if (!cartBox || !totalEl) return;
-
-  const clientLabel = $("#mostradorClientLabel");
-  const clientSub = $("#mostradorClientSub");
-  if (clientLabel) clientLabel.textContent = state.selectedClient?.nombre || state.guestClientDraft?.nombre || "Seleccionar cliente";
-  if (clientSub) {
-    const extra = [state.selectedClient?.direccion || state.guestClientDraft?.direccion || "", state.selectedClient?.telefono || state.guestClientDraft?.telefono || ""].filter(Boolean).join(" · ");
-    clientSub.textContent = extra || "";
-  }
-
-  const catLabel = $("#mostradorCategoryLabel");
-  if (catLabel) catLabel.textContent = state.selectedCategory || "Todas las categorías";
-
-  const prodLabel = $("#mostradorProductsLabel");
-  if (prodLabel) {
-    const count = state.mostradorCart.length;
-    prodLabel.textContent = count ? `${count} productos seleccionados` : "Seleccionar productos";
-  }
+  renderMostradorQuickLabelsD9();
 
   if (!state.mostradorCart.length) {
     cartBox.className = "cart-list empty-state";
@@ -3560,26 +3574,33 @@ function renderMostradorD9() {
     cartBox.className = "cart-list";
     cartBox.innerHTML = state.mostradorCart.map(item => `
       <div class="cart-item mostrador-cart-item-d9">
-        <div class="cart-top">
+        <div class="cart-item-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
-            <div class="mini-text">${esc(fmtQtyD9(item.cantidad))} × ${money(item.precio)}</div>
+            <div class="cart-meta">${esc(mostradorQtyTextD9(item.cantidad))} × ${money(item.precio)}</div>
           </div>
           <button class="remove-btn" data-mostrador-remove="${esc(item.id)}" type="button">Quitar</button>
         </div>
-        <div class="mostrador-line-d9">
-          <div class="qty-stepper mostrador-stepper-d9" data-no-toggle="true">
-            <button class="qty-btn" data-mostrador-step="${esc(item.id)}" data-step="-1" type="button">−</button>
-            <button class="qty-edit-btn-d9 mostrador-qty-value-d9" data-mostrador-qty="${esc(item.id)}" type="button">${esc(fmtQtyD9(item.cantidad))}</button>
-            <button class="qty-btn" data-mostrador-step="${esc(item.id)}" data-step="1" type="button">+</button>
-          </div>
-          <div class="product-price cart-line-total-d9">${money((Number(item.cantidad)||0) * (Number(item.precio)||0))}</div>
+        <div class="mostrador-line-d9 mostrador-line-controls-d9">
+          <button class="qty-step-btn-d9" data-mostrador-delta="${esc(item.id)}" data-delta="-1" type="button">−</button>
+          <button class="qty-edit-btn-d9 mostrador-qty-value-d9" data-mostrador-qty="${esc(item.id)}" type="button">${esc(mostradorQtyTextD9(item.cantidad))}</button>
+          <button class="qty-step-btn-d9" data-mostrador-delta="${esc(item.id)}" data-delta="1" type="button">+</button>
+          <strong>${money(Number(item.cantidad || 0) * Number(item.precio || 0))}</strong>
         </div>
-      </div>
-    `).join("");
+      </div>`).join("");
   }
   totalEl.textContent = money(mostradorTotalD9());
 }
+
+function updateMostradorQtyDeltaD9(id, delta) {
+  const item = state.mostradorCart.find(x => String(x.id) === String(id));
+  if (!item) return;
+  item.cantidad = Number(item.cantidad || 0) + Number(delta || 0);
+  if (item.cantidad <= 0) state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
+  renderMostradorD9();
+  if (state.productPickerMode === "mostrador") renderProducts();
+}
+
 function addMostradorProductD9(id) {
   const p = state.products.find(x => String(x.id) === String(id));
   if (!p) return;
@@ -3590,17 +3611,7 @@ function addMostradorProductD9(id) {
     state.mostradorCart.push({ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 });
   }
   renderMostradorD9();
-}
-function updateMostradorQtyD9(id, delta) {
-  const item = state.mostradorCart.find(x => String(x.id) === String(id));
-  if (!item) return;
-  const next = (Number(item.cantidad) || 0) + Number(delta || 0);
-  if (next <= 0) {
-    state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
-  } else {
-    item.cantidad = Number.isInteger(next) ? next : Number(next.toFixed(3));
-  }
-  renderMostradorD9();
+  if (state.productPickerMode === "mostrador") renderProducts();
 }
 function editMostradorQtyD9(id) {
   const item = state.mostradorCart.find(x => String(x.id) === String(id));
@@ -3615,6 +3626,7 @@ function editMostradorQtyD9(id) {
     item.cantidad = qty;
   }
   renderMostradorD9();
+  if (state.productPickerMode === "mostrador") renderProducts();
 }
 function resetMostradorD9() {
   if (!state.mostradorCart.length || confirm("¿Limpiar venta mostrador?")) {
@@ -3692,27 +3704,22 @@ function setupMostradorViewD9() {
   sec.innerHTML = `
     <div class="view-head history-head-d9">
       <button class="back-btn history-home-d9 home-red-d9" data-back="home" type="button">🏠</button>
-      <div class="history-title-d9"><h2>Venta mostrador</h2><p class="subhead">Remito interno / comprobante.</p></div>
+      <div class="history-title-d9"><h2>Venta mostrador</h2><p class="subhead">Remito interno y comprobante.</p></div>
     </div>
 
-    <div class="card section-block">
-      <button id="btnMostradorClient" class="quick-field" type="button">
-        <span>CLIENTE</span>
+    <div class="card quick-grid-card mostrador-picker-card-d9">
+      <button id="btnMostradorOpenClients" class="picker-btn" type="button">
+        <span class="picker-label">Cliente</span>
         <strong id="mostradorClientLabel">Seleccionar cliente</strong>
-        <small id="mostradorClientSub"></small>
       </button>
-    </div>
 
-    <div class="card section-block">
-      <button id="btnMostradorCategory" class="quick-field" type="button">
-        <span>CATEGORÍA</span>
+      <button id="btnMostradorOpenCategories" class="picker-btn" type="button">
+        <span class="picker-label">Categoría</span>
         <strong id="mostradorCategoryLabel">Todas las categorías</strong>
       </button>
-    </div>
 
-    <div class="card section-block">
-      <button id="btnMostradorProducts" class="quick-field" type="button">
-        <span>PRODUCTOS</span>
+      <button id="btnMostradorOpenProducts" class="picker-btn" type="button">
+        <span class="picker-label">Productos</span>
         <strong id="mostradorProductsLabel">Seleccionar productos</strong>
       </button>
     </div>
@@ -3725,6 +3732,7 @@ function setupMostradorViewD9() {
     </div>`;
   main.appendChild(sec);
 }
+
 function renderMostradorRoleD9() {
   setupMostradorHomeD9();
   setupMostradorViewD9();
