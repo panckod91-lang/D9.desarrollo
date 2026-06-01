@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.1.12.1 (historial integrado fix)";
+const APP_VERSION = "v1.2.0-dev (modo mostrador MVP)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -48,7 +48,9 @@ const state = {
   hasLoadedData: false,
   orderSendLockUntil: 0,
   lastOrderFingerprint: "",
-  qtyModalItemId: ""
+  qtyModalItemId: "",
+  mostradorSearch: "",
+  mostradorCart: []
 };
 
 const bannerCarousel = {
@@ -63,6 +65,21 @@ const bannerCarousel = {
 
 const $ = (s) => document.querySelector(s);
 const money = (v) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(v) || 0);
+
+const money2 = (v) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(Number(v) || 0);
+function isMostradorD9() {
+  return String(state.seller?.rol || "").trim().toLowerCase() === "mostrador";
+}
+function parseDecimalD9(value) {
+  if (value === null || value === undefined) return 0;
+  const s = String(value).trim().replace(/\./g, "").replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+function fmtQtyD9(value) {
+  const n = Number(value) || 0;
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: Number.isInteger(n) ? 0 : 3, maximumFractionDigits: 3 }).format(n);
+}
 
 function tapFeedbackD9() {
   try {
@@ -1537,6 +1554,7 @@ function renderBannerWithTransition(newIndex, direction = 1) {
 
 function renderBanner(skipTimerReset = false) {
   const box = $("#bannerWrap");
+  if (isMostradorD9()) { if (box) { box.classList.add("hidden"); box.innerHTML = ""; } return; }
   if (!box) return;
 
   const rows = getBannerRows();
@@ -2788,6 +2806,8 @@ function saveHistory(payload, status = "enviado", error = "") {
   });
   saveJSON(STORAGE_KEYS.history, history.slice(0, 300));
   renderHistory();
+  renderMostradorRoleD9();
+  renderMostradorD9();
 }
 
 function savePendingPayload(payload) {
@@ -3095,6 +3115,8 @@ function showD9Confirm({ message, detail = "", okText = "Aceptar", cancelText = 
 function toggleHistoryItem(id) {
   state.historyOpenId = state.historyOpenId === id ? null : id;
   renderHistory();
+  renderMostradorRoleD9();
+  renderMostradorD9();
 }
 
 function exportHistory() {
@@ -3265,6 +3287,7 @@ function bind() {
   $("#btnGoOrder").addEventListener("click", () => showView("order"));
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
+  document.addEventListener("click", (ev) => { const b = ev.target.closest("#btnGoMostrador"); if (b) { renderMostradorD9(); showView("mostrador"); } });
   $("#sellerBadge").addEventListener("click", () => openLogin(false));
   $("#btnPancko").addEventListener("click", () => {
     if (isAppUpdateAvailableD9) {
@@ -3339,7 +3362,21 @@ function bind() {
     openModal("product");
   });
 
+  document.addEventListener("input", (ev) => {
+    if (ev.target && ev.target.id === "mostradorSearch") { state.mostradorSearch = ev.target.value.trim().toLowerCase(); renderMostradorD9(); }
+  });
+
   document.addEventListener("click", (ev) => {
+    const addMost = ev.target.closest("[data-mostrador-add]");
+    if (addMost) { addMostradorProductD9(addMost.dataset.mostradorAdd); return; }
+    const qtyMost = ev.target.closest("[data-mostrador-qty]");
+    if (qtyMost) { editMostradorQtyD9(qtyMost.dataset.mostradorQty); return; }
+    const remMost = ev.target.closest("[data-mostrador-remove]");
+    if (remMost) { state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(remMost.dataset.mostradorRemove)); renderMostradorD9(); return; }
+    if (ev.target.closest("#btnMostradorClear")) { resetMostradorD9(); return; }
+    if (ev.target.closest("#btnMostradorPrint")) { printMostradorD9(); return; }
+    if (ev.target.closest("#btnMostradorWhatsApp")) { whatsappMostradorD9(); return; }
+
     const back = ev.target.closest("[data-back]");
     if (back) showView(back.dataset.back);
 
@@ -3453,6 +3490,168 @@ function hydrateSeller() {
   return true;
 }
 
+
+function mostradorTotalD9() {
+  return state.mostradorCart.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * (Number(item.precio) || 0), 0);
+}
+function renderMostradorD9() {
+  const list = $("#mostradorProductsList");
+  const cartBox = $("#mostradorCartList");
+  const totalEl = $("#mostradorTotal");
+  if (!list || !cartBox || !totalEl) return;
+
+  const term = String(state.mostradorSearch || "").trim().toLowerCase();
+  let filtered = state.products.filter(productHasValidPrice);
+  if (term) filtered = filtered.filter(p => productMatchesTerm(p, term));
+  filtered = filtered.slice(0, 40);
+
+  list.innerHTML = filtered.length ? filtered.map(p => `
+    <button class="mostrador-product-d9" data-mostrador-add="${esc(p.id)}" type="button">
+      <span>
+        <strong>${esc(p.nombre)}</strong>
+        <small>${esc(productMetaLine(p))}</small>
+      </span>
+      <b>${money(productPrice(p))}</b>
+    </button>
+  `).join("") : '<div class="empty-state">Buscá un producto para agregarlo.</div>';
+
+  if (!state.mostradorCart.length) {
+    cartBox.className = "cart-list empty-state";
+    cartBox.textContent = "Todavía no agregaste productos.";
+  } else {
+    cartBox.className = "cart-list";
+    cartBox.innerHTML = state.mostradorCart.map(item => `
+      <div class="cart-item mostrador-cart-item-d9">
+        <div class="cart-top">
+          <div>
+            <strong>${esc(item.nombre)}</strong>
+            <div class="mini-text">${esc(fmtQtyD9(item.cantidad))} × ${money(item.precio)}</div>
+          </div>
+          <button class="remove-btn" data-mostrador-remove="${esc(item.id)}" type="button">Quitar</button>
+        </div>
+        <div class="mostrador-line-d9">
+          <button class="qty-edit-btn-d9" data-mostrador-qty="${esc(item.id)}" type="button">✏️ Cant./Peso</button>
+          <div class="product-price cart-line-total-d9">${money((Number(item.cantidad)||0) * (Number(item.precio)||0))}</div>
+        </div>
+      </div>
+    `).join("");
+  }
+  totalEl.textContent = money(mostradorTotalD9());
+}
+function addMostradorProductD9(id) {
+  const p = state.products.find(x => String(x.id) === String(id));
+  if (!p) return;
+  const current = state.mostradorCart.find(x => String(x.id) === String(id));
+  if (current) {
+    current.cantidad = (Number(current.cantidad) || 0) + 1;
+  } else {
+    state.mostradorCart.push({ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 });
+  }
+  renderMostradorD9();
+}
+function editMostradorQtyD9(id) {
+  const item = state.mostradorCart.find(x => String(x.id) === String(id));
+  if (!item) return;
+  const raw = prompt(`Cantidad / peso para:\n${item.nombre}`, String(item.cantidad).replace(".", ","));
+  if (raw === null) return;
+  const qty = parseDecimalD9(raw);
+  if (!Number.isFinite(qty) || qty < 0) return toast("Cantidad inválida.");
+  if (qty === 0) {
+    state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
+  } else {
+    item.cantidad = qty;
+  }
+  renderMostradorD9();
+}
+function resetMostradorD9() {
+  if (!state.mostradorCart.length || confirm("¿Limpiar venta mostrador?")) {
+    state.mostradorCart = [];
+    renderMostradorD9();
+  }
+}
+function buildMostradorTextD9() {
+  const fecha = new Date().toLocaleString("es-AR");
+  const operador = state.seller?.nombre || "Mostrador";
+  const lines = [
+    "REMITO INTERNO / MOSTRADOR",
+    `Fecha: ${fecha}`,
+    `Operador: ${operador}`,
+    "────────────────────"
+  ];
+  state.mostradorCart.forEach((item, i) => {
+    const total = (Number(item.cantidad)||0) * (Number(item.precio)||0);
+    lines.push(`${i+1}) ${item.nombre}`);
+    lines.push(`   Cant/Peso: ${fmtQtyD9(item.cantidad)} · Unit: ${money(item.precio)} · Total: ${money(total)}`);
+  });
+  lines.push("────────────────────");
+  lines.push(`TOTAL: ${money(mostradorTotalD9())}`);
+  lines.push("Comprobante no oficial");
+  return lines.join("\n");
+}
+function whatsappMostradorD9() {
+  if (!state.mostradorCart.length) return toast("Agregá productos.");
+  const phone = normalizePhone(state.seller?.wasap_report || confText("wasap_report", "") || confText("telefono", ""));
+  const text = encodeURIComponent(buildMostradorTextD9());
+  const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+function printMostradorD9() {
+  if (!state.mostradorCart.length) return toast("Agregá productos.");
+  const rows = state.mostradorCart.map(item => {
+    const total = (Number(item.cantidad)||0) * (Number(item.precio)||0);
+    return `<tr><td>${esc(item.nombre)}</td><td>${esc(fmtQtyD9(item.cantidad))}</td><td>${esc(money(item.precio))}</td><td>${esc(money(total))}</td></tr>`;
+  }).join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Mostrador</title><style>
+    @page{size:A4;margin:12mm} body{font-family:Arial,sans-serif;color:#111;font-size:13px} h1{font-size:20px;margin:0 0 4px} .muted{color:#555;margin-bottom:12px} table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #ddd;padding:6px 4px;text-align:left} th{font-size:11px;text-transform:uppercase} td:nth-child(2),td:nth-child(3),td:nth-child(4),th:nth-child(2),th:nth-child(3),th:nth-child(4){text-align:right;white-space:nowrap}.total{font-size:18px;font-weight:800;text-align:right;margin-top:12px}.foot{font-size:11px;color:#666;margin-top:14px}</style></head><body>
+    <h1>Remito interno / mostrador</h1><div class="muted">Fecha: ${esc(new Date().toLocaleString("es-AR"))} · Operador: ${esc(state.seller?.nombre || "Mostrador")}</div>
+    <table><thead><tr><th>Producto</th><th>Cant/Peso</th><th>Unit.</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="total">TOTAL: ${esc(money(mostradorTotalD9()))}</div><div class="foot">Comprobante no oficial</div>
+    <script>window.print();<\/script></body></html>`;
+  const win = window.open("", "_blank");
+  if (!win) return toast("El navegador bloqueó la impresión.");
+  win.document.open(); win.document.write(html); win.document.close();
+}
+function setupMostradorHomeD9() {
+  const home = document.querySelector("#view-home .home-grid-vnext");
+  if (!home || document.getElementById("btnGoMostrador")) return;
+  const btn = document.createElement("button");
+  btn.id = "btnGoMostrador";
+  btn.className = "action-card-vnext mostrador-home-btn-d9 hidden";
+  btn.type = "button";
+  btn.innerHTML = `<span class="action-head-vnext"><span class="icon-wrap-vnext warm">🏪</span><span class="title-group-vnext"><strong>Venta mostrador</strong><small>Remito interno / comprobante</small></span></span><span class="go-vnext">›</span>`;
+  home.prepend(btn);
+}
+function setupMostradorViewD9() {
+  const main = document.querySelector("main");
+  if (!main || document.getElementById("view-mostrador")) return;
+  const sec = document.createElement("section");
+  sec.id = "view-mostrador";
+  sec.className = "view";
+  sec.innerHTML = `
+    <div class="view-head history-head-d9">
+      <button class="back-btn history-home-d9 home-red-d9" data-back="home" type="button">🏠</button>
+      <div class="history-title-d9"><h2>Venta mostrador</h2><p class="subhead">Cantidades enteras o por peso.</p></div>
+    </div>
+    <div class="card section-block">
+      <input id="mostradorSearch" class="input" type="search" placeholder="Buscar producto por nombre o código..." autocomplete="off" />
+      <div id="mostradorProductsList" class="price-products-list mostrador-products-list-d9"></div>
+    </div>
+    <div class="card section-block">
+      <div class="section-title-row between"><h3>Comprobante</h3><button id="btnMostradorClear" class="link-btn danger" type="button">Limpiar</button></div>
+      <div id="mostradorCartList" class="cart-list empty-state">Todavía no agregaste productos.</div>
+      <div class="summary-box compact-summary"><div class="summary-row total"><span>Total</span><strong id="mostradorTotal">$ 0</strong></div></div>
+      <div class="actions-stack"><button id="btnMostradorPrint" class="primary-btn" type="button">Imprimir</button><button id="btnMostradorWhatsApp" class="secondary-btn" type="button">Enviar WhatsApp</button></div>
+    </div>`;
+  main.appendChild(sec);
+}
+function renderMostradorRoleD9() {
+  setupMostradorHomeD9();
+  setupMostradorViewD9();
+  const on = isMostradorD9();
+  document.getElementById("btnGoMostrador")?.classList.toggle("hidden", !on);
+  document.getElementById("bannerWrap")?.classList.toggle("hidden", on);
+}
+
 function renderAll() {
   renderTop();
   renderNetwork();
@@ -3472,6 +3671,8 @@ function renderAll() {
   renderPriceListControls();
   renderPriceProducts();
   renderHistory();
+  renderMostradorRoleD9();
+  renderMostradorD9();
 }
 
 
