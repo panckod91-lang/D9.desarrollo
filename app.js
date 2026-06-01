@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.0-dev (modo mostrador MVP)";
+const APP_VERSION = "v1.2.1-dev (mostrador home protagonista)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3612,14 +3612,23 @@ function printMostradorD9() {
   win.document.open(); win.document.write(html); win.document.close();
 }
 function setupMostradorHomeD9() {
-  const home = document.querySelector("#view-home .home-grid-vnext");
-  if (!home || document.getElementById("btnGoMostrador")) return;
+  const homeView = document.querySelector("#view-home");
+  const orderBtn = document.getElementById("btnGoOrder");
+  if (!homeView || !orderBtn || document.getElementById("btnGoMostrador")) return;
+
   const btn = document.createElement("button");
   btn.id = "btnGoMostrador";
-  btn.className = "action-card-vnext mostrador-home-btn-d9 hidden";
+  btn.className = "cta-main-vnext mostrador-cta-main-d9 hidden";
   btn.type = "button";
-  btn.innerHTML = `<span class="action-head-vnext"><span class="icon-wrap-vnext warm">🏪</span><span class="title-group-vnext"><strong>Venta mostrador</strong><small>Remito interno / comprobante</small></span></span><span class="go-vnext">›</span>`;
-  home.prepend(btn);
+  btn.innerHTML = `
+    <span class="cta-icon-vnext">🏪</span>
+    <span class="cta-copy-vnext">
+      <strong>VENTA MOSTRADOR</strong>
+      <small>Remito interno y comprobante</small>
+    </span>
+    <span class="cta-arrow-vnext">›</span>
+  `;
+  homeView.insertBefore(btn, orderBtn);
 }
 function setupMostradorViewD9() {
   const main = document.querySelector("main");

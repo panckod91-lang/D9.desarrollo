@@ -3401,3 +3401,14 @@ button:active,
 .mostrador-product-d9 b{white-space:nowrap;font-size:.92rem;}
 .mostrador-line-d9{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;margin-top:10px;}
 .mostrador-cart-item-d9 .qty-edit-btn-d9{justify-self:start;}
+
+
+/* D9 mostrador home protagonista */
+.mostrador-cta-main-d9{
+  background:linear-gradient(180deg,#38bdf8 0%, #0ea5e9 42%, #0284c7 100%) !important;
+  box-shadow:0 16px 26px rgba(14,165,233,.24) !important;
+}
+.mostrador-cta-main-d9 .cta-icon-vnext{
+  background:rgba(255,255,255,.14);
+  border-color:rgba(255,255,255,.42);
+}
