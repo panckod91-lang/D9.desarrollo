@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.1-dev (mostrador home protagonista)";
+const APP_VERSION = "v1.2.2-dev (mostrador flujo base)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -50,7 +50,8 @@ const state = {
   lastOrderFingerprint: "",
   qtyModalItemId: "",
   mostradorSearch: "",
-  mostradorCart: []
+  mostradorCart: [],
+  mostradorSelecting: false
 };
 
 const bannerCarousel = {
@@ -670,6 +671,11 @@ function bindInlineQtyCaptureD9() {
 
     lastQtyTap = { id, action, time: now };
 
+    if (state.mostradorSelecting || state.currentView === "mostrador") {
+      updateMostradorQtyD9(id, action === "plus" ? 1 : -1);
+      return;
+    }
+
     if (action === "plus") updateQty(id, 1);
     if (action === "minus") updateQty(id, -1);
   };
@@ -1238,6 +1244,10 @@ function closeModal(name) {
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
   if (name === "product") {
+    if (state.mostradorSelecting) {
+      state.mostradorSelecting = false;
+      renderMostradorD9();
+    }
     renderQuickLabels();
     renderCart();
   }
@@ -2379,7 +2389,8 @@ function renderProducts() {
 
   list.innerHTML = filtered.length
     ? filtered.map(p => {
-      const cartItem = state.cart.find(x => x.id === p.id);
+      const pickingMostrador = state.mostradorSelecting || state.currentView === "mostrador";
+      const cartItem = (pickingMostrador ? state.mostradorCart : state.cart).find(x => String(x.id) === String(p.id));
       const selected = !!cartItem;
       const cantidad = Number(cartItem?.cantidad || 1);
       const precio = Number(cartItem?.precio || productPrice(p) || 0);
@@ -3367,8 +3378,28 @@ function bind() {
   });
 
   document.addEventListener("click", (ev) => {
+    if (ev.target.closest("#btnMostradorClient")) {
+      if (state.seller?.rol === "cliente") return;
+      renderClients();
+      openModal("client");
+      return;
+    }
+    if (ev.target.closest("#btnMostradorCategory")) {
+      renderCategories();
+      openModal("category");
+      return;
+    }
+    if (ev.target.closest("#btnMostradorProducts")) {
+      state.mostradorSelecting = true;
+      renderProducts();
+      openModal("product");
+      return;
+    }
+
     const addMost = ev.target.closest("[data-mostrador-add]");
     if (addMost) { addMostradorProductD9(addMost.dataset.mostradorAdd); return; }
+    const stepMost = ev.target.closest("[data-mostrador-step]");
+    if (stepMost) { updateMostradorQtyD9(stepMost.dataset.mostradorStep, stepMost.dataset.step); return; }
     const qtyMost = ev.target.closest("[data-mostrador-qty]");
     if (qtyMost) { editMostradorQtyD9(qtyMost.dataset.mostradorQty); return; }
     const remMost = ev.target.closest("[data-mostrador-remove]");
@@ -3393,7 +3424,13 @@ function bind() {
     if (cat) selectCategory(cat.dataset.category);
 
     const toggle = ev.target.closest("[data-toggle-product]");
-    if (toggle && !ev.target.closest("[data-no-toggle]")) toggleProduct(toggle.dataset.toggleProduct);
+    if (toggle && !ev.target.closest("[data-no-toggle]")) {
+      if (state.mostradorSelecting || state.currentView === "mostrador") {
+        addMostradorProductD9(toggle.dataset.toggleProduct);
+      } else {
+        toggleProduct(toggle.dataset.toggleProduct);
+      }
+    }
 
     const qty = ev.target.closest("[data-qty]");
     if (qty) updateQty(qty.dataset.id, qty.dataset.qty === "plus" ? 1 : -1);
@@ -3495,25 +3532,26 @@ function mostradorTotalD9() {
   return state.mostradorCart.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * (Number(item.precio) || 0), 0);
 }
 function renderMostradorD9() {
-  const list = $("#mostradorProductsList");
   const cartBox = $("#mostradorCartList");
   const totalEl = $("#mostradorTotal");
-  if (!list || !cartBox || !totalEl) return;
+  if (!cartBox || !totalEl) return;
 
-  const term = String(state.mostradorSearch || "").trim().toLowerCase();
-  let filtered = state.products.filter(productHasValidPrice);
-  if (term) filtered = filtered.filter(p => productMatchesTerm(p, term));
-  filtered = filtered.slice(0, 40);
+  const clientLabel = $("#mostradorClientLabel");
+  const clientSub = $("#mostradorClientSub");
+  if (clientLabel) clientLabel.textContent = state.selectedClient?.nombre || state.guestClientDraft?.nombre || "Seleccionar cliente";
+  if (clientSub) {
+    const extra = [state.selectedClient?.direccion || state.guestClientDraft?.direccion || "", state.selectedClient?.telefono || state.guestClientDraft?.telefono || ""].filter(Boolean).join(" · ");
+    clientSub.textContent = extra || "";
+  }
 
-  list.innerHTML = filtered.length ? filtered.map(p => `
-    <button class="mostrador-product-d9" data-mostrador-add="${esc(p.id)}" type="button">
-      <span>
-        <strong>${esc(p.nombre)}</strong>
-        <small>${esc(productMetaLine(p))}</small>
-      </span>
-      <b>${money(productPrice(p))}</b>
-    </button>
-  `).join("") : '<div class="empty-state">Buscá un producto para agregarlo.</div>';
+  const catLabel = $("#mostradorCategoryLabel");
+  if (catLabel) catLabel.textContent = state.selectedCategory || "Todas las categorías";
+
+  const prodLabel = $("#mostradorProductsLabel");
+  if (prodLabel) {
+    const count = state.mostradorCart.length;
+    prodLabel.textContent = count ? `${count} productos seleccionados` : "Seleccionar productos";
+  }
 
   if (!state.mostradorCart.length) {
     cartBox.className = "cart-list empty-state";
@@ -3530,7 +3568,11 @@ function renderMostradorD9() {
           <button class="remove-btn" data-mostrador-remove="${esc(item.id)}" type="button">Quitar</button>
         </div>
         <div class="mostrador-line-d9">
-          <button class="qty-edit-btn-d9" data-mostrador-qty="${esc(item.id)}" type="button">✏️ Cant./Peso</button>
+          <div class="qty-stepper mostrador-stepper-d9" data-no-toggle="true">
+            <button class="qty-btn" data-mostrador-step="${esc(item.id)}" data-step="-1" type="button">−</button>
+            <button class="qty-edit-btn-d9 mostrador-qty-value-d9" data-mostrador-qty="${esc(item.id)}" type="button">${esc(fmtQtyD9(item.cantidad))}</button>
+            <button class="qty-btn" data-mostrador-step="${esc(item.id)}" data-step="1" type="button">+</button>
+          </div>
           <div class="product-price cart-line-total-d9">${money((Number(item.cantidad)||0) * (Number(item.precio)||0))}</div>
         </div>
       </div>
@@ -3546,6 +3588,17 @@ function addMostradorProductD9(id) {
     current.cantidad = (Number(current.cantidad) || 0) + 1;
   } else {
     state.mostradorCart.push({ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 });
+  }
+  renderMostradorD9();
+}
+function updateMostradorQtyD9(id, delta) {
+  const item = state.mostradorCart.find(x => String(x.id) === String(id));
+  if (!item) return;
+  const next = (Number(item.cantidad) || 0) + Number(delta || 0);
+  if (next <= 0) {
+    state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
+  } else {
+    item.cantidad = Number.isInteger(next) ? next : Number(next.toFixed(3));
   }
   renderMostradorD9();
 }
@@ -3639,12 +3692,31 @@ function setupMostradorViewD9() {
   sec.innerHTML = `
     <div class="view-head history-head-d9">
       <button class="back-btn history-home-d9 home-red-d9" data-back="home" type="button">🏠</button>
-      <div class="history-title-d9"><h2>Venta mostrador</h2><p class="subhead">Cantidades enteras o por peso.</p></div>
+      <div class="history-title-d9"><h2>Venta mostrador</h2><p class="subhead">Remito interno / comprobante.</p></div>
     </div>
+
     <div class="card section-block">
-      <input id="mostradorSearch" class="input" type="search" placeholder="Buscar producto por nombre o código..." autocomplete="off" />
-      <div id="mostradorProductsList" class="price-products-list mostrador-products-list-d9"></div>
+      <button id="btnMostradorClient" class="quick-field" type="button">
+        <span>CLIENTE</span>
+        <strong id="mostradorClientLabel">Seleccionar cliente</strong>
+        <small id="mostradorClientSub"></small>
+      </button>
     </div>
+
+    <div class="card section-block">
+      <button id="btnMostradorCategory" class="quick-field" type="button">
+        <span>CATEGORÍA</span>
+        <strong id="mostradorCategoryLabel">Todas las categorías</strong>
+      </button>
+    </div>
+
+    <div class="card section-block">
+      <button id="btnMostradorProducts" class="quick-field" type="button">
+        <span>PRODUCTOS</span>
+        <strong id="mostradorProductsLabel">Seleccionar productos</strong>
+      </button>
+    </div>
+
     <div class="card section-block">
       <div class="section-title-row between"><h3>Comprobante</h3><button id="btnMostradorClear" class="link-btn danger" type="button">Limpiar</button></div>
       <div id="mostradorCartList" class="cart-list empty-state">Todavía no agregaste productos.</div>
