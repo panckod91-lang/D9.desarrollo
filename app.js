@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.8-dev (mostrador quitar arriba)";
+const APP_VERSION = "v1.2.9-dev (mostrador whatsapp)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3711,20 +3711,25 @@ function resetMostradorD9() {
 }
 function buildMostradorTextD9() {
   const fecha = new Date().toLocaleString("es-AR");
-  const operador = state.seller?.nombre || "Mostrador";
+  const operador = state.seller?.nombre || state.seller?.usuario || "Mostrador";
   const cliente = state.mostradorClient?.nombre_real || state.mostradorClient?.nombre || "Consumidor final";
   const lines = [
-    "REMITO INTERNO / MOSTRADOR",
-    `Fecha: ${fecha}`,
-    `Operador: ${operador}`,
+    "🧾 VENTA MOSTRADOR",
     `Cliente: ${cliente}`,
+    `Usuario: ${operador}`,
+    `Fecha: ${fecha}`,
     "────────────────────"
   ];
+
   state.mostradorCart.forEach((item, i) => {
-    const total = (Number(item.cantidad)||0) * (Number(item.precio)||0);
-    lines.push(`${i+1}) ${item.nombre}`);
-    lines.push(`   Cant/Peso: ${fmtQtyD9(item.cantidad)} · Unit: ${money(item.precio)} · Total: ${money(total)}`);
+    const precio = asegurarPrecioMostradorD9(item);
+    const cantidad = Number(item.cantidad || 0);
+    const total = cantidad * Number(precio || 0);
+    lines.push(`${i + 1}) ${item.nombre}`);
+    lines.push(`   Cant/Peso: ${fmtQtyD9(cantidad)} · P.Unit: ${money(precio)}`);
+    lines.push(`   Total: ${money(total)}`);
   });
+
   lines.push("────────────────────");
   lines.push(`TOTAL: ${money(mostradorTotalD9())}`);
   lines.push("Comprobante no oficial");
@@ -3732,10 +3737,14 @@ function buildMostradorTextD9() {
 }
 function whatsappMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
-  const phone = normalizePhone(state.seller?.wasap_report || confText("wasap_report", "") || confText("telefono", ""));
-  const text = encodeURIComponent(buildMostradorTextD9());
-  const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+
+  const userWaReport = String(state.seller?.wasap_report || "").trim();
+  const waPhone = userWaReport || getDefaultWhatsAppD9();
+  const waText = buildMostradorTextD9();
+
+  if (!openWhatsApp(waPhone, waText)) {
+    toast("Falta WhatsApp destino en usuario o confi.");
+  }
 }
 function printMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
