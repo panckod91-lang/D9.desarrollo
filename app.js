@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.1-dev (historial ventas mostrador)";
+const APP_VERSION = "v1.3.2-dev (ventas guardado único + reutilizar)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -58,6 +58,8 @@ const state = {
   qtyModalMode: "order",
   mostradorSearch: "",
   mostradorCart: [],
+  mostradorVentaDraftId: "",
+  mostradorVentaFingerprint: "",
   productPickerMode: "order"
 };
 
@@ -3539,6 +3541,13 @@ function bind() {
     const historyItem = ev.target.closest("[data-history-id]");
     if (historyItem) toggleHistoryItem(historyItem.dataset.historyId);
 
+    const reuseSales = ev.target.closest("[data-reuse-sales-history]");
+    if (reuseSales) {
+      ev.stopPropagation();
+      reuseSalesHistoryD9(reuseSales.dataset.reuseSalesHistory);
+      return;
+    }
+
     const deleteSales = ev.target.closest("[data-delete-sales-history]");
     if (deleteSales) {
       ev.stopPropagation();
@@ -3719,15 +3728,43 @@ function editMostradorQtyD9(id) {
 function resetMostradorD9() {
   if (!state.mostradorCart.length || confirm("¿Limpiar venta mostrador?")) {
     state.mostradorCart = [];
+    state.mostradorVentaDraftId = "";
+    state.mostradorVentaFingerprint = "";
     renderMostradorD9();
   }
+}
+
+
+function mostradorFingerprintD9() {
+  const clienteObj = state.mostradorClient || {};
+  const items = state.mostradorCart.map(item => ({
+    id: String(item.id || ""),
+    nombre: String(item.nombre || ""),
+    cantidad: Number(item.cantidad || 0),
+    precio: Number(item.precio || 0)
+  }));
+  return JSON.stringify({
+    usuario_id: String(state.seller?.id || ""),
+    cliente_id: String(clienteObj.id || ""),
+    cliente: String(clienteObj.nombre_real || clienteObj.nombre || "Consumidor final"),
+    items
+  });
+}
+
+function ensureMostradorVentaIdD9() {
+  const fp = mostradorFingerprintD9();
+  if (!state.mostradorVentaDraftId || state.mostradorVentaFingerprint !== fp) {
+    state.mostradorVentaDraftId = `VM-${state.seller?.id || "0"}-${Date.now().toString(36).toUpperCase()}`;
+    state.mostradorVentaFingerprint = fp;
+  }
+  return state.mostradorVentaDraftId;
 }
 
 function buildMostradorPayloadD9() {
   const now = new Date();
   const clienteObj = state.mostradorClient || {};
   const clienteNombre = clienteObj.nombre_real || clienteObj.nombre || "Consumidor final";
-  const ventaId = `VM-${state.seller?.id || "0"}-${Date.now().toString(36).toUpperCase()}`;
+  const ventaId = ensureMostradorVentaIdD9();
   const items = state.mostradorCart.map(item => {
     const cantidad = Number(item.cantidad || 0);
     const precio = Number(item.precio || 0);
@@ -3757,24 +3794,33 @@ function buildMostradorPayloadD9() {
     direccion: clienteObj.direccion || "",
     items,
     total_venta: total,
-    total
+    total,
+    fingerprint: state.mostradorVentaFingerprint || mostradorFingerprintD9()
   };
 }
 
-function saveMostradorHistoryD9(payload, status = "local", error = "") {
+function saveMostradorHistoryD9(payload, status = "local", error = "", options = {}) {
   const history = readJSON(STORAGE_KEYS.salesHistory, []);
-  history.unshift({
-    id: payload.venta_id || `VM_LOCAL_${Date.now()}`,
-    venta_id: payload.venta_id || "",
-    fecha: payload.fecha || new Date().toISOString(),
-    fecha_txt: payload.fecha_txt || new Date().toLocaleString("es-AR"),
-    usuario: payload.usuario || state.seller?.nombre || "Mostrador",
-    cliente: payload.cliente || "Consumidor final",
-    cliente_id: payload.cliente_id || "",
-    total: Number(payload.total_venta || payload.total || 0),
+  const id = payload.venta_id || `VM_LOCAL_${Date.now()}`;
+  const existingIndex = history.findIndex(x => String(x.id || x.venta_id || "") === String(id));
+  const prev = existingIndex >= 0 ? history[existingIndex] : {};
+  const entry = {
+    ...prev,
+    id,
+    venta_id: payload.venta_id || prev.venta_id || "",
+    fecha: payload.fecha || prev.fecha || new Date().toISOString(),
+    fecha_txt: payload.fecha_txt || prev.fecha_txt || new Date().toLocaleString("es-AR"),
+    usuario: payload.usuario || prev.usuario || state.seller?.nombre || "Mostrador",
+    cliente: payload.cliente || prev.cliente || "Consumidor final",
+    cliente_id: payload.cliente_id || prev.cliente_id || "",
+    telefono: payload.telefono || prev.telefono || "",
+    direccion: payload.direccion || prev.direccion || "",
+    total: Number(payload.total_venta || payload.total || prev.total || 0),
     status,
     error,
-    items: (payload.items || []).map(x => ({
+    saved_sheet: Boolean(options.saved_sheet || prev.saved_sheet || false),
+    fingerprint: payload.fingerprint || prev.fingerprint || "",
+    items: (payload.items || prev.items || []).map(x => ({
       id: x.id || x.id_producto || "",
       id_producto: x.id_producto || x.id || "",
       nombre: x.nombre || "",
@@ -3782,11 +3828,57 @@ function saveMostradorHistoryD9(payload, status = "local", error = "") {
       precio: Number(x.precio || x.precio_unitario || 0),
       subtotal: Number(x.subtotal || 0)
     }))
-  });
+  };
+
+  if (existingIndex >= 0) {
+    history[existingIndex] = entry;
+  } else {
+    history.unshift(entry);
+  }
+
   saveJSON(STORAGE_KEYS.salesHistory, history.slice(0, 200));
   renderSalesHistoryD9();
   renderMostradorRoleD9();
+  return entry;
 }
+
+function ventaMostradorYaGuardadaEnSheetD9(ventaId) {
+  const history = readJSON(STORAGE_KEYS.salesHistory, []);
+  const item = history.find(x => String(x.id || x.venta_id || "") === String(ventaId));
+  return Boolean(item?.saved_sheet);
+}
+
+async function persistMostradorVentaD9(motivo = "local") {
+  if (!state.mostradorCart.length) return null;
+  const payload = buildMostradorPayloadD9();
+  const statusBase = motivo === "whatsapp" ? "enviado" : motivo === "impresion" ? "impreso" : "local";
+  saveMostradorHistoryD9(payload, statusBase, motivo === "whatsapp" ? "WhatsApp abierto" : "", { saved_sheet: false });
+
+  if (ventaMostradorYaGuardadaEnSheetD9(payload.venta_id)) {
+    return { ok: true, already_saved: true, payload };
+  }
+
+  if (!navigator.onLine) {
+    saveMostradorHistoryD9(payload, "pendiente", "Sin conexión", { saved_sheet: false });
+    return { ok: false, pending: true, payload };
+  }
+
+  try {
+    const res = await sendMostradorVentaToSheetD9(payload);
+    if (res?.ok) {
+      saveMostradorHistoryD9(payload, statusBase, "", { saved_sheet: true });
+      return { ok: true, payload, res };
+    }
+    saveMostradorHistoryD9(payload, "pendiente", res?.error || "No se confirmó en Sheet", { saved_sheet: false });
+    console.warn("Venta mostrador pendiente:", res?.error || res);
+    return { ok: false, payload, res };
+  } catch (err) {
+    saveMostradorHistoryD9(payload, "pendiente", String(err), { saved_sheet: false });
+    console.warn("Venta mostrador pendiente:", err);
+    return { ok: false, payload, error: err };
+  }
+}
+
 
 async function sendMostradorVentaToSheetD9(payload) {
   const apiBase = getApiBaseD9();
@@ -3848,6 +3940,7 @@ function renderSalesHistoryD9() {
             <div class="mini-text">${esc(new Date(item.fecha || Date.now()).toLocaleString("es-AR"))} · ${esc(item.usuario || "Mostrador")}</div>
             <div class="mini-text history-meta-line">${esc(item.status || "local")}${item.error ? ' · ' + esc(item.error) : ''}</div>
             <div class="history-actions" data-no-toggle>
+              <button class="history-reuse-btn" data-reuse-sales-history="${esc(id)}" type="button" aria-label="Reutilizar venta">↻ Reutilizar</button>
               <button class="history-delete-btn" data-delete-sales-history="${esc(id)}" type="button" aria-label="Borrar venta del historial">🗑️ Borrar</button>
             </div>
           </div>
@@ -3867,6 +3960,43 @@ function renderSalesHistoryD9() {
 function toggleSalesHistoryD9(id) {
   state.salesHistoryOpenId = state.salesHistoryOpenId === id ? null : id;
   renderSalesHistoryD9();
+}
+
+function reuseSalesHistoryD9(id) {
+  const history = readJSON(STORAGE_KEYS.salesHistory, []);
+  const sale = history.find(x => String(x.id || x.venta_id || "") === String(id));
+  if (!sale) return toast("No encontré esa venta.");
+
+  const clienteId = String(sale.cliente_id || "").trim();
+  const clienteNombre = String(sale.cliente || "").trim();
+  const found = state.clients.find(c =>
+    (clienteId && String(c.id || "") === clienteId) ||
+    (clienteNombre && String(c.nombre || "").trim().toLowerCase() === clienteNombre.toLowerCase())
+  );
+
+  state.mostradorClient = found || {
+    id: clienteId || `ocasional_${Date.now()}`,
+    nombre: clienteNombre || "Consumidor final",
+    nombre_real: clienteNombre || "Consumidor final",
+    telefono: sale.telefono || "",
+    direccion: sale.direccion || "",
+    ciudad: "",
+    ocasional: true
+  };
+
+  state.mostradorCart = (sale.items || []).map(x => ({
+    id: x.id_producto || x.id || "",
+    nombre: x.nombre || "",
+    precio: Number(x.precio || 0),
+    cantidad: Number(x.cantidad || 0)
+  })).filter(x => x.nombre && Number(x.cantidad) > 0);
+
+  state.mostradorVentaDraftId = "";
+  state.mostradorVentaFingerprint = "";
+  state.salesHistoryOpenId = null;
+  renderMostradorD9();
+  showView("mostrador");
+  toast("Venta reutilizada. Revisá y enviá/impimí como nueva.");
 }
 
 function deleteSalesHistoryD9(id) {
@@ -3915,27 +4045,12 @@ function whatsappMostradorD9() {
   const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
   window.open(url, "_blank", "noopener,noreferrer");
 
-  saveMostradorHistoryD9(payload, "enviado", "WhatsApp abierto");
-
-  if (navigator.onLine) {
-    sendMostradorVentaToSheetD9(payload)
-      .then(res => {
-        if (!res?.ok) {
-          saveMostradorHistoryD9(payload, "pendiente", res?.error || "No se confirmó en Sheet");
-          console.warn("Venta mostrador pendiente:", res?.error || res);
-        }
-      })
-      .catch(err => {
-        saveMostradorHistoryD9(payload, "pendiente", String(err));
-        console.warn("Venta mostrador pendiente:", err);
-      });
-  } else {
-    saveMostradorHistoryD9(payload, "pendiente", "Sin conexión");
-  }
+  persistMostradorVentaD9("whatsapp");
 }
 
 function printMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
+  persistMostradorVentaD9("impresion");
   const rows = state.mostradorCart.map(item => {
     const total = (Number(item.cantidad)||0) * (Number(item.precio)||0);
     return `<tr><td>${esc(item.nombre)}</td><td>${esc(fmtQtyD9(item.cantidad))}</td><td>${esc(money(item.precio))}</td><td>${esc(money(total))}</td></tr>`;
