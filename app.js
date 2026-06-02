@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.9-dev (mostrador whatsapp)";
+const APP_VERSION = "v1.3.0-dev (ventas mostrador sheet)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3709,6 +3709,64 @@ function resetMostradorD9() {
     renderMostradorD9();
   }
 }
+
+function generarVentaIdMostradorD9() {
+  const vendedorId = state.seller?.id || "0";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return `VM-${vendedorId}-${code}`;
+}
+
+function buildMostradorPayloadD9() {
+  const ventaId = generarVentaIdMostradorD9();
+  const cliente = state.mostradorClient || {};
+  const items = state.mostradorCart.map(item => {
+    const precio = asegurarPrecioMostradorD9(item);
+    const cantidad = Number(item.cantidad || 0);
+    return {
+      id: item.id || "",
+      id_producto: item.id || "",
+      nombre: item.nombre || "",
+      cantidad,
+      precio: Number(precio || 0),
+      subtotal: cantidad * Number(precio || 0)
+    };
+  });
+  const total = items.reduce((sum, x) => sum + Number(x.subtotal || 0), 0);
+  return {
+    action: "guardar_venta_mostrador",
+    venta_id: ventaId,
+    fecha: new Date().toISOString(),
+    usuario_id: state.seller?.id || "",
+    usuario: state.seller?.nombre || state.seller?.usuario || "Mostrador",
+    rol: state.seller?.rol || "mostrador",
+    cliente_id: cliente.id || "",
+    cliente: cliente.nombre_real || cliente.nombre || "Consumidor final",
+    telefono: cliente.telefono || "",
+    direccion: cliente.direccion || cliente.ciudad || "",
+    items,
+    total
+  };
+}
+
+async function trySendMostradorToWebhookD9(payload) {
+  if (!Array.isArray(WEBHOOK_ENDPOINTS) || !WEBHOOK_ENDPOINTS.length) {
+    return { ok: false, error: "Webhook no configurado" };
+  }
+  let lastError = null;
+  for (const endpoint of WEBHOOK_ENDPOINTS) {
+    try {
+      const result = await sendToEndpoint(endpoint, payload);
+      if (result?.ok) return result;
+      lastError = result || { ok: false, error: `Fallo en ${endpoint}`, endpoint };
+    } catch (error) {
+      lastError = { ok: false, error: String(error), endpoint };
+    }
+  }
+  return lastError || { ok: false, error: "No se pudo guardar la venta mostrador" };
+}
+
 function buildMostradorTextD9() {
   const fecha = new Date().toLocaleString("es-AR");
   const operador = state.seller?.nombre || state.seller?.usuario || "Mostrador";
@@ -3738,13 +3796,34 @@ function buildMostradorTextD9() {
 function whatsappMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
 
+  const payload = buildMostradorPayloadD9();
   const userWaReport = String(state.seller?.wasap_report || "").trim();
   const waPhone = userWaReport || getDefaultWhatsAppD9();
   const waText = buildMostradorTextD9();
 
   if (!openWhatsApp(waPhone, waText)) {
     toast("Falta WhatsApp destino en usuario o confi.");
+    return;
   }
+
+  if (!navigator.onLine) {
+    toast("Venta abierta en WhatsApp. Sin internet para registrar en Sheets.");
+    return;
+  }
+
+  trySendMostradorToWebhookD9(payload)
+    .then(res => {
+      if (res?.ok) {
+        toast(res?.data?.duplicated ? "Venta ya registrada." : "Venta registrada.");
+      } else {
+        toast("WhatsApp abierto, pero no pude registrar la venta.");
+        console.warn("Venta mostrador no registrada:", res?.error || res);
+      }
+    })
+    .catch(err => {
+      toast("WhatsApp abierto, pero falló el registro.");
+      console.error("Error registrando venta mostrador:", err);
+    });
 }
 function printMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
