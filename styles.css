@@ -3458,3 +3458,22 @@ button:active,
     font-size:17px !important;
   }
 }
+
+
+/* D9 v1.2.5 mostrador: etiqueta similar a pedido + cantidad editable */
+.mostrador-cart-item-d9{ padding:18px 18px 16px; }
+.mostrador-cart-item-d9 .cart-item-top{ align-items:flex-start; }
+.mostrador-cart-item-d9 .remove-btn{ min-width:92px; height:58px; border-radius:18px; font-size:17px; font-weight:900; }
+.mostrador-cart-item-d9 .cart-meta{ font-size:18px; }
+.mostrador-line-controls-d9{ grid-template-columns:54px minmax(86px,auto) 54px 1fr; gap:10px; margin-top:12px; }
+.qty-step-btn-d9{ width:54px; height:54px; border-radius:16px; font-size:30px; }
+.mostrador-qty-value-d9{ min-width:86px; height:54px; padding:0 13px; border-radius:16px; font-size:19px; }
+.mostrador-line-controls-d9 strong{ font-size:25px; font-weight:950; padding-left:8px; }
+@media(max-width:420px){
+  .mostrador-cart-item-d9{ padding:16px 14px; }
+  .mostrador-cart-item-d9 .remove-btn{ min-width:86px; height:54px; }
+  .mostrador-line-controls-d9{ grid-template-columns:50px minmax(78px,auto) 50px 1fr; gap:8px; }
+  .qty-step-btn-d9{ width:50px; height:50px; }
+  .mostrador-qty-value-d9{ min-width:78px; height:50px; font-size:18px; }
+  .mostrador-line-controls-d9 strong{ font-size:23px; }
+}

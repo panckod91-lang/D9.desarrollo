@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.4-dev (mostrador selectores separados)";
+const APP_VERSION = "v1.2.5-dev (mostrador precio y etiqueta fix)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2488,7 +2488,7 @@ function updateQty(id, delta) {
     const item = state.mostradorCart.find(x => String(x.id) === String(id));
     if (!item) return;
     item.cantidad = Number(item.cantidad || 0) + delta;
-    item.precio = productPrice(item);
+    asegurarPrecioMostradorD9(item);
     if (item.cantidad <= 0) state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
     renderProducts();
     renderMostradorD9();
@@ -2660,7 +2660,8 @@ function applyQtyModalD9() {
     else state.cart = state.cart.filter(x => String(x.id) !== String(id));
   } else {
     item.cantidad = qty;
-    item.precio = productPrice(item);
+    if (isMostrador) asegurarPrecioMostradorD9(item);
+    else item.precio = productPrice(item);
   }
 
   closeQtyModalD9();
@@ -3625,6 +3626,20 @@ function mostradorQtyTextD9(value) {
   return String(n).replace(".", ",");
 }
 
+function mostradorPrecioActualD9(item) {
+  const precioGuardado = Number(item?.precio || 0);
+  if (Number.isFinite(precioGuardado) && precioGuardado > 0) return precioGuardado;
+  const prod = state.products.find(p => String(p.id) === String(item?.id));
+  return Number(productPrice(prod) || 0);
+}
+
+function asegurarPrecioMostradorD9(item) {
+  if (!item) return 0;
+  const precio = mostradorPrecioActualD9(item);
+  item.precio = precio;
+  return precio;
+}
+
 function renderMostradorD9() {
   const cartBox = $("#mostradorCartList");
   const totalEl = $("#mostradorTotal");
@@ -3636,22 +3651,27 @@ function renderMostradorD9() {
     cartBox.textContent = "Todavía no agregaste productos.";
   } else {
     cartBox.className = "cart-list";
-    cartBox.innerHTML = state.mostradorCart.map(item => `
+    cartBox.innerHTML = state.mostradorCart.map(item => {
+      const precio = asegurarPrecioMostradorD9(item);
+      const cantidadTxt = mostradorQtyTextD9(item.cantidad);
+      const subtotal = Number(item.cantidad || 0) * Number(precio || 0);
+      return `
       <div class="cart-item mostrador-cart-item-d9">
         <div class="cart-item-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
-            <div class="cart-meta">${esc(mostradorQtyTextD9(item.cantidad))} × ${money(item.precio)}</div>
+            <div class="cart-meta">${esc(cantidadTxt)} × ${money(precio)}</div>
           </div>
           <button class="remove-btn" data-mostrador-remove="${esc(item.id)}" type="button">Quitar</button>
         </div>
         <div class="mostrador-line-d9 mostrador-line-controls-d9">
           <button class="qty-step-btn-d9" data-mostrador-delta="${esc(item.id)}" data-delta="-1" type="button">−</button>
-          <button class="qty-edit-btn-d9 mostrador-qty-value-d9" data-mostrador-qty="${esc(item.id)}" type="button">${esc(mostradorQtyTextD9(item.cantidad))}</button>
+          <button class="qty-edit-btn-d9 mostrador-qty-value-d9" data-mostrador-qty="${esc(item.id)}" type="button">✏ ${esc(cantidadTxt)}</button>
           <button class="qty-step-btn-d9" data-mostrador-delta="${esc(item.id)}" data-delta="1" type="button">+</button>
-          <strong>${money(Number(item.cantidad || 0) * Number(item.precio || 0))}</strong>
+          <strong>${money(subtotal)}</strong>
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
   }
   totalEl.textContent = money(mostradorTotalD9());
 }
@@ -3660,6 +3680,7 @@ function updateMostradorQtyDeltaD9(id, delta) {
   const item = state.mostradorCart.find(x => String(x.id) === String(id));
   if (!item) return;
   item.cantidad = Number(item.cantidad || 0) + Number(delta || 0);
+  asegurarPrecioMostradorD9(item);
   if (item.cantidad <= 0) state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
   renderMostradorD9();
   if (state.productPickerMode === "mostrador") renderProducts();
