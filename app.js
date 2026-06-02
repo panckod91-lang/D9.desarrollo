@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.2.3-dev (mostrador flujo selector pedido)";
+const APP_VERSION = "v1.2.4-dev (mostrador selectores separados)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -40,6 +40,10 @@ const state = {
   guestClientDraft: null,
   selectedCategory: "",
   cart: [],
+  mostradorClient: null,
+  mostradorCategory: "",
+  clientPickerMode: "order",
+  categoryPickerMode: "order",
   currentView: "home",
   historyOpenId: null,
   isSending: false,
@@ -49,6 +53,7 @@ const state = {
   orderSendLockUntil: 0,
   lastOrderFingerprint: "",
   qtyModalItemId: "",
+  qtyModalMode: "order",
   mostradorSearch: "",
   mostradorCart: [],
   productPickerMode: "order"
@@ -698,8 +703,9 @@ function bindSelectedProductNoToggleD9() {
     const selectedCard = e.target.closest?.("#productModal .product-picker.is-selected");
     if (!selectedCard) return;
 
-    // Los botones de cantidad tienen su propio handler en captura.
+    // Los botones de cantidad y el valor editable tienen su propio handler.
     if (e.target.closest?.("[data-product-qty]")) return;
+    if (e.target.closest?.("[data-mostrador-qty]")) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1990,7 +1996,8 @@ function renderQuickLabels() {
   if (clientSearch && isClient) clientSearch.value = "";
   const productHint = $("#productModalHint");
   if (productHint) {
-    const catLabel = state.selectedCategory ? cleanCategory(state.selectedCategory) : "Todas las categorías";
+    const activeProductCategory = state.productPickerMode === "mostrador" ? state.mostradorCategory : state.selectedCategory;
+    const catLabel = activeProductCategory ? cleanCategory(activeProductCategory) : "Todas las categorías";
     productHint.innerHTML = `
       <div class="modal-category-box-d9">
         <div class="modal-category-current-d9">
@@ -2027,9 +2034,10 @@ function renderClients() {
     return;
   }
 
+  const activeClient = state.clientPickerMode === "mostrador" ? state.mostradorClient : state.selectedClient;
   list.innerHTML = filtered.length
     ? occasionalBtn + filtered.map(c => `
-      <button class="option-item option-button ${state.selectedClient?.id === c.id ? "is-selected" : ""}" data-client-id="${esc(c.id)}" type="button">
+      <button class="option-item option-button ${activeClient?.id === c.id ? "is-selected" : ""}" data-client-id="${esc(c.id)}" type="button">
         <strong>${esc(c.nombre)}</strong>
         <div class="option-meta">${esc(c.telefono || "Sin teléfono")} · ${esc(c.direccion || "Sin dirección")}</div>
       </button>`).join("")
@@ -2039,6 +2047,16 @@ function renderClients() {
 function selectClient(id) {
   const c = state.clients.find(x => x.id === id);
   if (!c) return;
+
+  if (state.clientPickerMode === "mostrador") {
+    state.mostradorClient = c;
+    renderClients();
+    renderMostradorD9();
+    closeModal("client");
+    toast("Cliente cargado en mostrador.");
+    return;
+  }
+
   const previousClientId = state.selectedClient?.id || "";
   state.selectedClient = c;
   if (["vendedor", "mostrador"].includes(String(state.seller?.rol || "").toLowerCase())) {
@@ -2123,9 +2141,8 @@ function saveOccasionalClient() {
 
   if (!nombre) return toast("Cargá al menos el nombre del cliente.");
 
-  const previousId = state.selectedClient?.id || "";
   const nextId = `ocasional_${Date.now()}`;
-  state.selectedClient = {
+  const occasionalClient = {
     id: nextId,
     nombre: `NUEVO | ${nombre}${telefono ? ' | ' + telefono : ''}${direccion ? ' | ' + direccion : ''}${ciudad ? ' | ' + ciudad : ''}`,
     nombre_real: nombre,
@@ -2135,6 +2152,19 @@ function saveOccasionalClient() {
     lista_1: lista,
     ocasional: true
   };
+
+  if (state.clientPickerMode === "mostrador") {
+    state.mostradorClient = occasionalClient;
+    closeModal("occasionalClient");
+    closeModal("client");
+    renderMostradorD9();
+    showView("mostrador");
+    toast("Cliente ocasional cargado en mostrador.");
+    return;
+  }
+
+  const previousId = state.selectedClient?.id || "";
+  state.selectedClient = occasionalClient;
   state.guestClientDraft = state.selectedClient;
   renderSellerBadge();
   if (!state.seller) {
@@ -2324,13 +2354,14 @@ function categoriesList() {
 function renderCategories() {
   const list = $("#categoryList");
   const cats = categoriesList();
+  const activeCategory = state.categoryPickerMode === "mostrador" ? state.mostradorCategory : state.selectedCategory;
   const allItem = `
-    <button class="option-item option-button ${!state.selectedCategory ? "is-selected" : ""}" data-category="" type="button">
+    <button class="option-item option-button ${!activeCategory ? "is-selected" : ""}" data-category="" type="button">
       <strong>Todas las categorías</strong>
       <div class="option-meta">Mostrar todos los productos activos</div>
     </button>`;
   list.innerHTML = allItem + cats.map(c => `
-    <button class="option-item option-button ${state.selectedCategory === c ? "is-selected" : ""}" data-category="${esc(c)}" type="button">
+    <button class="option-item option-button ${activeCategory === c ? "is-selected" : ""}" data-category="${esc(c)}" type="button">
       <strong>${esc(cleanCategory(c))}</strong>
     </button>`).join("");
 }
@@ -2345,6 +2376,15 @@ function clearProductSearchD9(shouldRender = true) {
 }
 
 function selectCategory(category) {
+  if (state.categoryPickerMode === "mostrador") {
+    state.mostradorCategory = category;
+    clearProductSearchD9(false);
+    renderCategories();
+    renderProducts();
+    renderMostradorD9();
+    closeModal("category");
+    return;
+  }
   state.selectedCategory = category;
   clearProductSearchD9(false);
   renderCategories();
@@ -2356,16 +2396,14 @@ function selectCategory(category) {
 
 function renderProducts() {
   const term = $("#productSearch").value.trim().toLowerCase();
-  const cat = state.selectedCategory;
-  const list = $("#productList");
   const pickerMode = state.productPickerMode === "mostrador" ? "mostrador" : "order";
+  const cat = pickerMode === "mostrador" ? state.mostradorCategory : state.selectedCategory;
+  const list = $("#productList");
   const activeCart = pickerMode === "mostrador" ? state.mostradorCart : state.cart;
 
   let filtered = [];
 
   if (term) {
-    // Con búsqueda escrita, buscar globalmente en todo el catálogo.
-    // Sin búsqueda, se respeta la categoría seleccionada.
     filtered = state.products
       .filter(productHasValidPrice)
       .filter(p => productMatchesTerm(p, term))
@@ -2384,26 +2422,34 @@ function renderProducts() {
 
   list.innerHTML = filtered.length
     ? filtered.map(p => {
-      const cartItem = state.cart.find(x => x.id === p.id);
+      const cartItem = activeCart.find(x => String(x.id) === String(p.id));
       const selected = !!cartItem;
       const cantidad = Number(cartItem?.cantidad || 1);
       const precio = Number(cartItem?.precio || productPrice(p) || 0);
       const subtotal = cantidad * precio;
+      const qtyText = pickerMode === "mostrador" ? mostradorQtyTextD9(cantidad) : String(cantidad);
       return `
-        <button class="product-item product-picker ${selected ? "is-selected" : ""}" data-toggle-product="${esc(p.id)}" ${selected ? 'data-no-toggle="true"' : ''} type="button">
+        <button class="product-item product-picker ${selected ? "is-selected" : ""} ${selected && pickerMode === "mostrador" ? "is-mostrador-selected-d9" : ""}" data-toggle-product="${esc(p.id)}" ${selected ? 'data-no-toggle="true"' : ''} type="button">
           <div class="product-copy product-main-d9" ${selected ? 'data-no-toggle="true"' : ''}>
             <strong>${esc(p.nombre)}</strong>
             <div class="option-meta">${esc(productMetaLine(p))}</div>
             ${term && cat && p.categoria !== cat ? `<div class="option-meta product-cross-category-d9">Cat. ${esc(cleanCategory(p.categoria))}</div>` : ""}
           </div>
           <div class="product-side product-qty-zone-d9" ${selected ? 'data-no-toggle="true"' : ''}>
-            ${selected ? `
+            ${selected ? (pickerMode === "mostrador" ? `
+              <div class="qty-inline-d9 mostrador-product-qty-d9" data-no-toggle="true">
+                <span class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" role="button" tabindex="0" aria-label="Restar">−</span>
+                <span class="qty-inline-btn-d9 qty-inline-value-d9" data-mostrador-qty="${esc(p.id)}" role="button" tabindex="0" aria-label="Editar cantidad">${esc(qtyText)}</span>
+                <span class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" role="button" tabindex="0" aria-label="Sumar">+</span>
+              </div>
+              <div class="product-line-total-d9">${money(subtotal)}</div>
+            ` : `
               <div class="qty-inline-d9" data-no-toggle="true">
                 <span class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" role="button" tabindex="0" aria-label="Restar unidad">−</span>
                 <span class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" role="button" tabindex="0" aria-label="Sumar unidad">+</span>
               </div>
               <div class="product-line-total-d9">x${cantidad} · ${money(subtotal)}</div>
-            ` : `<div class="pick-state">Tocar para agregar</div>`}
+            `) : `<div class="pick-state">Tocar para agregar</div>`}
           </div>
         </button>`;
     }).join("")
@@ -2536,7 +2582,7 @@ function ensureQtyModalD9() {
         <button class="ghost-x" data-close-modal="qty" type="button" aria-label="Cerrar">✕</button>
       </div>
       <label class="qty-input-label-d9" for="qtyModalInput">Ingresá cantidad</label>
-      <input id="qtyModalInput" class="qty-input-d9" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" autocomplete="off" />
+      <input id="qtyModalInput" class="qty-input-d9" type="text" inputmode="decimal" min="0" step="any" autocomplete="off" />
       <p class="qty-help-d9">0 elimina el producto del pedido.</p>
       <div class="qty-actions-d9">
         <button id="btnQtyCancel" class="secondary-btn" type="button">Cancelar</button>
@@ -2555,18 +2601,20 @@ function ensureQtyModalD9() {
   return modal;
 }
 
-function openQtyModalD9(id) {
-  const item = state.cart.find(x => x.id === id);
+function openQtyModalD9(id, mode = "order") {
+  const isMostrador = mode === "mostrador";
+  const item = (isMostrador ? state.mostradorCart : state.cart).find(x => String(x.id) === String(id));
   if (!item) return;
 
   const modal = ensureQtyModalD9();
   state.qtyModalItemId = id;
+  state.qtyModalMode = isMostrador ? "mostrador" : "order";
 
   const productEl = modal.querySelector("#qtyModalProduct");
   const input = modal.querySelector("#qtyModalInput");
 
   if (productEl) productEl.textContent = item.nombre || "Producto";
-  if (input) input.value = String(Number(item.cantidad || 1));
+  if (input) input.value = isMostrador ? mostradorQtyTextD9(item.cantidad || 1) : String(Number(item.cantidad || 1));
 
   modal.classList.remove("hidden");
   modal.setAttribute("aria-hidden", "false");
@@ -2582,6 +2630,7 @@ function closeQtyModalD9() {
   const modal = document.getElementById("qtyModal");
   if (!modal) return;
   state.qtyModalItemId = "";
+  state.qtyModalMode = "order";
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
 }
@@ -2592,7 +2641,8 @@ function applyQtyModalD9() {
   if (!id || !input) return;
 
   const raw = String(input.value || "").trim();
-  const qty = Math.floor(Number(raw.replace(",", ".")));
+  const isMostrador = state.qtyModalMode === "mostrador";
+  const qty = isMostrador ? parseDecimalD9(raw) : Math.floor(Number(raw.replace(",", ".")));
 
   if (!Number.isFinite(qty) || qty < 0) {
     toast("Ingresá una cantidad válida.");
@@ -2601,11 +2651,13 @@ function applyQtyModalD9() {
     return;
   }
 
-  const item = state.cart.find(x => x.id === id);
+  const list = isMostrador ? state.mostradorCart : state.cart;
+  const item = list.find(x => String(x.id) === String(id));
   if (!item) return closeQtyModalD9();
 
   if (qty <= 0) {
-    state.cart = state.cart.filter(x => x.id !== id);
+    if (isMostrador) state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
+    else state.cart = state.cart.filter(x => String(x.id) !== String(id));
   } else {
     item.cantidad = qty;
     item.precio = productPrice(item);
@@ -2613,9 +2665,13 @@ function applyQtyModalD9() {
 
   closeQtyModalD9();
   renderProducts();
-  renderQuickLabels();
-  renderCart();
+  if (isMostrador) renderMostradorD9();
+  else {
+    renderQuickLabels();
+    renderCart();
+  }
 }
+
 
 function renderCart() {
   const box = $("#cartList");
@@ -3301,6 +3357,7 @@ function bind() {
     if (insideCategoryBtn) {
       e.preventDefault();
       e.stopPropagation();
+      state.categoryPickerMode = state.productPickerMode === "mostrador" ? "mostrador" : "order";
       renderCategories();
       const categoryModal = document.getElementById("categoryModal");
       if (categoryModal) {
@@ -3363,6 +3420,7 @@ function bind() {
   $("#btnRestoreHistory")?.addEventListener("click", openRestoreHistory);
   $("#restoreHistoryFile")?.addEventListener("change", restoreHistoryFromFile);
   $("#btnOpenClients").addEventListener("click", () => {
+    state.clientPickerMode = "order";
     if (state.seller?.rol === "cliente") return;
     if (!state.seller) {
       openOccasionalClientModal();
@@ -3372,6 +3430,7 @@ function bind() {
     openModal("client");
   });
   $("#btnOpenCategories").addEventListener("click", () => {
+    state.categoryPickerMode = "order";
     if (!state.selectedClient && !state.seller?.rol) {
       toast("Primero cargá los datos del comprador.");
       openOccasionalClientModal();
@@ -3381,6 +3440,8 @@ function bind() {
     openModal("category");
   });
   $("#btnOpenProducts").addEventListener("click", () => {
+    state.productPickerMode = "order";
+    state.categoryPickerMode = "order";
     if (!state.selectedClient && !state.seller?.rol) {
       toast("Primero cargá los datos del comprador.");
       openOccasionalClientModal();
@@ -3393,17 +3454,20 @@ function bind() {
 
   document.addEventListener("click", (ev) => {
     if (ev.target.closest("#btnMostradorOpenClients")) {
+      state.clientPickerMode = "mostrador";
       renderClients();
       openModal("client");
       return;
     }
     if (ev.target.closest("#btnMostradorOpenCategories")) {
+      state.categoryPickerMode = "mostrador";
       renderCategories();
       openModal("category");
       return;
     }
     if (ev.target.closest("#btnMostradorOpenProducts")) {
       state.productPickerMode = "mostrador";
+      state.categoryPickerMode = "mostrador";
       renderProducts();
       openModal("product");
       return;
@@ -3548,10 +3612,10 @@ function renderMostradorQuickLabelsD9() {
   const client = document.getElementById("mostradorClientLabel");
   const category = document.getElementById("mostradorCategoryLabel");
   const products = document.getElementById("mostradorProductsLabel");
-  if (client) client.textContent = state.selectedClient
-    ? (state.selectedClient.ocasional ? (state.selectedClient.nombre_real || state.selectedClient.nombre || "Cliente nuevo / ocasional") : state.selectedClient.nombre)
+  if (client) client.textContent = state.mostradorClient
+    ? (state.mostradorClient.ocasional ? (state.mostradorClient.nombre_real || state.mostradorClient.nombre || "Cliente nuevo / ocasional") : state.mostradorClient.nombre)
     : "Seleccionar cliente";
-  if (category) category.textContent = state.selectedCategory ? cleanCategory(state.selectedCategory) : "Todas las categorías";
+  if (category) category.textContent = state.mostradorCategory ? cleanCategory(state.mostradorCategory) : "Todas las categorías";
   if (products) products.textContent = state.mostradorCart.length ? `${state.mostradorCart.length} productos seleccionados` : "Seleccionar productos";
 }
 
@@ -3614,20 +3678,9 @@ function addMostradorProductD9(id) {
   if (state.productPickerMode === "mostrador") renderProducts();
 }
 function editMostradorQtyD9(id) {
-  const item = state.mostradorCart.find(x => String(x.id) === String(id));
-  if (!item) return;
-  const raw = prompt(`Cantidad / peso para:\n${item.nombre}`, String(item.cantidad).replace(".", ","));
-  if (raw === null) return;
-  const qty = parseDecimalD9(raw);
-  if (!Number.isFinite(qty) || qty < 0) return toast("Cantidad inválida.");
-  if (qty === 0) {
-    state.mostradorCart = state.mostradorCart.filter(x => String(x.id) !== String(id));
-  } else {
-    item.cantidad = qty;
-  }
-  renderMostradorD9();
-  if (state.productPickerMode === "mostrador") renderProducts();
+  openQtyModalD9(id, "mostrador");
 }
+
 function resetMostradorD9() {
   if (!state.mostradorCart.length || confirm("¿Limpiar venta mostrador?")) {
     state.mostradorCart = [];
@@ -3637,10 +3690,12 @@ function resetMostradorD9() {
 function buildMostradorTextD9() {
   const fecha = new Date().toLocaleString("es-AR");
   const operador = state.seller?.nombre || "Mostrador";
+  const cliente = state.mostradorClient?.nombre_real || state.mostradorClient?.nombre || "Consumidor final";
   const lines = [
     "REMITO INTERNO / MOSTRADOR",
     `Fecha: ${fecha}`,
     `Operador: ${operador}`,
+    `Cliente: ${cliente}`,
     "────────────────────"
   ];
   state.mostradorCart.forEach((item, i) => {
@@ -3668,7 +3723,7 @@ function printMostradorD9() {
   }).join("");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Mostrador</title><style>
     @page{size:A4;margin:12mm} body{font-family:Arial,sans-serif;color:#111;font-size:13px} h1{font-size:20px;margin:0 0 4px} .muted{color:#555;margin-bottom:12px} table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #ddd;padding:6px 4px;text-align:left} th{font-size:11px;text-transform:uppercase} td:nth-child(2),td:nth-child(3),td:nth-child(4),th:nth-child(2),th:nth-child(3),th:nth-child(4){text-align:right;white-space:nowrap}.total{font-size:18px;font-weight:800;text-align:right;margin-top:12px}.foot{font-size:11px;color:#666;margin-top:14px}</style></head><body>
-    <h1>Remito interno / mostrador</h1><div class="muted">Fecha: ${esc(new Date().toLocaleString("es-AR"))} · Operador: ${esc(state.seller?.nombre || "Mostrador")}</div>
+    <h1>Remito interno / mostrador</h1><div class="muted">Fecha: ${esc(new Date().toLocaleString("es-AR"))} · Operador: ${esc(state.seller?.nombre || "Mostrador")} · Cliente: ${esc(state.mostradorClient?.nombre_real || state.mostradorClient?.nombre || "Consumidor final")}</div>
     <table><thead><tr><th>Producto</th><th>Cant/Peso</th><th>Unit.</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="total">TOTAL: ${esc(money(mostradorTotalD9()))}</div><div class="foot">Comprobante no oficial</div>
     <script>window.print();<\/script></body></html>`;
