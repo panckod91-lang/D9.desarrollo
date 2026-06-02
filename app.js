@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.0-dev (ventas mostrador sheet)";
+const APP_VERSION = "v1.3.1-dev (historial ventas mostrador)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -11,6 +11,7 @@ let isAppUpdateAvailableD9 = false;
 const STORAGE_KEYS = {
   seller: "d9_usuario",
   history: "d9_historial",
+  salesHistory: "d9_historial_ventas_mostrador",
   pending: "d9_pendientes",
   guestClient: "d9_invitado_cliente",
   versionLogged: "d9_version_logged"
@@ -46,6 +47,7 @@ const state = {
   categoryPickerMode: "order",
   currentView: "home",
   historyOpenId: null,
+  salesHistoryOpenId: null,
   isSending: false,
   isSyncing: false,
   manualPriceOverride: false,
@@ -3374,6 +3376,7 @@ function bind() {
   $("#btnGoPrices").addEventListener("click", () => { renderPriceListControls(); renderPriceProducts(); showView("prices"); });
   $("#btnGoHistory").addEventListener("click", () => { renderHistory(); showView("history"); });
   document.addEventListener("click", (ev) => { const b = ev.target.closest("#btnGoMostrador"); if (b) { renderMostradorD9(); showView("mostrador"); } });
+  document.addEventListener("click", (ev) => { const b = ev.target.closest("#btnGoSalesHistoryD9"); if (b) { renderSalesHistoryD9(); showView("sales-history-d9"); } });
   $("#sellerBadge").addEventListener("click", () => openLogin(false));
   $("#btnPancko").addEventListener("click", () => {
     if (isAppUpdateAvailableD9) {
@@ -3535,6 +3538,16 @@ function bind() {
 
     const historyItem = ev.target.closest("[data-history-id]");
     if (historyItem) toggleHistoryItem(historyItem.dataset.historyId);
+
+    const deleteSales = ev.target.closest("[data-delete-sales-history]");
+    if (deleteSales) {
+      ev.stopPropagation();
+      deleteSalesHistoryD9(deleteSales.dataset.deleteSalesHistory);
+      return;
+    }
+
+    const salesHistoryItem = ev.target.closest("[data-sales-history-id]");
+    if (salesHistoryItem) toggleSalesHistoryD9(salesHistoryItem.dataset.salesHistoryId);
 
     const bannerDot = ev.target.closest("[data-banner-slide]");
     if (bannerDot) {
@@ -3710,84 +3723,185 @@ function resetMostradorD9() {
   }
 }
 
-function generarVentaIdMostradorD9() {
-  const vendedorId = state.seller?.id || "0";
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-  return `VM-${vendedorId}-${code}`;
-}
-
 function buildMostradorPayloadD9() {
-  const ventaId = generarVentaIdMostradorD9();
-  const cliente = state.mostradorClient || {};
+  const now = new Date();
+  const clienteObj = state.mostradorClient || {};
+  const clienteNombre = clienteObj.nombre_real || clienteObj.nombre || "Consumidor final";
+  const ventaId = `VM-${state.seller?.id || "0"}-${Date.now().toString(36).toUpperCase()}`;
   const items = state.mostradorCart.map(item => {
-    const precio = asegurarPrecioMostradorD9(item);
     const cantidad = Number(item.cantidad || 0);
+    const precio = Number(item.precio || 0);
     return {
       id: item.id || "",
       id_producto: item.id || "",
       nombre: item.nombre || "",
       cantidad,
-      precio: Number(precio || 0),
-      subtotal: cantidad * Number(precio || 0)
+      precio,
+      precio_unitario: precio,
+      subtotal: cantidad * precio
     };
   });
   const total = items.reduce((sum, x) => sum + Number(x.subtotal || 0), 0);
   return {
     action: "guardar_venta_mostrador",
+    tipo: "mostrador",
     venta_id: ventaId,
-    fecha: new Date().toISOString(),
+    fecha: now.toISOString(),
+    fecha_txt: now.toLocaleString("es-AR"),
     usuario_id: state.seller?.id || "",
-    usuario: state.seller?.nombre || state.seller?.usuario || "Mostrador",
+    usuario: state.seller?.nombre || "Mostrador",
     rol: state.seller?.rol || "mostrador",
-    cliente_id: cliente.id || "",
-    cliente: cliente.nombre_real || cliente.nombre || "Consumidor final",
-    telefono: cliente.telefono || "",
-    direccion: cliente.direccion || cliente.ciudad || "",
+    cliente_id: clienteObj.id || "",
+    cliente: clienteNombre,
+    telefono: clienteObj.telefono || "",
+    direccion: clienteObj.direccion || "",
     items,
+    total_venta: total,
     total
   };
 }
 
-async function trySendMostradorToWebhookD9(payload) {
-  if (!Array.isArray(WEBHOOK_ENDPOINTS) || !WEBHOOK_ENDPOINTS.length) {
-    return { ok: false, error: "Webhook no configurado" };
+function saveMostradorHistoryD9(payload, status = "local", error = "") {
+  const history = readJSON(STORAGE_KEYS.salesHistory, []);
+  history.unshift({
+    id: payload.venta_id || `VM_LOCAL_${Date.now()}`,
+    venta_id: payload.venta_id || "",
+    fecha: payload.fecha || new Date().toISOString(),
+    fecha_txt: payload.fecha_txt || new Date().toLocaleString("es-AR"),
+    usuario: payload.usuario || state.seller?.nombre || "Mostrador",
+    cliente: payload.cliente || "Consumidor final",
+    cliente_id: payload.cliente_id || "",
+    total: Number(payload.total_venta || payload.total || 0),
+    status,
+    error,
+    items: (payload.items || []).map(x => ({
+      id: x.id || x.id_producto || "",
+      id_producto: x.id_producto || x.id || "",
+      nombre: x.nombre || "",
+      cantidad: Number(x.cantidad || 0),
+      precio: Number(x.precio || x.precio_unitario || 0),
+      subtotal: Number(x.subtotal || 0)
+    }))
+  });
+  saveJSON(STORAGE_KEYS.salesHistory, history.slice(0, 200));
+  renderSalesHistoryD9();
+  renderMostradorRoleD9();
+}
+
+async function sendMostradorVentaToSheetD9(payload) {
+  const apiBase = getApiBaseD9();
+  const body = JSON.stringify(payload);
+
+  async function tryPost(options) {
+    const r = await fetch(`${apiBase}?action=guardar_venta_mostrador`, {
+      method: "POST",
+      cache: "no-store",
+      redirect: "follow",
+      ...options
+    });
+    const text = await r.text();
+    try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
   }
-  let lastError = null;
-  for (const endpoint of WEBHOOK_ENDPOINTS) {
-    try {
-      const result = await sendToEndpoint(endpoint, payload);
-      if (result?.ok) return result;
-      lastError = result || { ok: false, error: `Fallo en ${endpoint}`, endpoint };
-    } catch (error) {
-      lastError = { ok: false, error: String(error), endpoint };
+
+  try {
+    const res = await tryPost({
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body
+    });
+    if (res?.ok) return res;
+  } catch (_) {}
+
+  return tryPost({
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: `payload=${encodeURIComponent(body)}`
+  });
+}
+
+function renderSalesHistoryD9() {
+  const list = document.getElementById("salesHistoryListD9");
+  if (!list) return;
+  const history = readJSON(STORAGE_KEYS.salesHistory, []);
+  if (!history.length) {
+    list.className = "history-list empty-state";
+    list.innerHTML = "Sin ventas guardadas todavía.";
+    return;
+  }
+  list.className = "history-list";
+  list.innerHTML = history.map(item => {
+    const id = item.id || item.venta_id || "";
+    const isOpen = state.salesHistoryOpenId === id;
+    const detalle = (item.items || []).map(prod => `
+      <div class="history-product-row">
+        <div class="history-product-main">
+          <strong>${esc(prod.nombre || "")}</strong>
+          <small>${esc(fmtQtyD9(prod.cantidad))} × ${esc(money(prod.precio))}</small>
+        </div>
+        <div class="history-product-side">
+          <strong>${esc(money(prod.subtotal || (Number(prod.cantidad||0)*Number(prod.precio||0))))}</strong>
+        </div>
+      </div>`).join("");
+    return `
+      <div class="history-item ${isOpen ? 'is-open' : ''}" data-sales-history-id="${esc(id)}" role="button" tabindex="0">
+        <div class="history-head-row">
+          <div class="history-copy">
+            <strong>${esc(item.cliente || "Consumidor final")}</strong>
+            <div class="mini-text">${esc(new Date(item.fecha || Date.now()).toLocaleString("es-AR"))} · ${esc(item.usuario || "Mostrador")}</div>
+            <div class="mini-text history-meta-line">${esc(item.status || "local")}${item.error ? ' · ' + esc(item.error) : ''}</div>
+            <div class="history-actions" data-no-toggle>
+              <button class="history-delete-btn" data-delete-sales-history="${esc(id)}" type="button" aria-label="Borrar venta del historial">🗑️ Borrar</button>
+            </div>
+          </div>
+          <div class="history-side">
+            <strong>${esc(money(item.total || 0))}</strong>
+            <div class="history-toggle">${isOpen ? '▲' : '▼'}</div>
+          </div>
+        </div>
+        <div class="history-detail ${isOpen ? '' : 'hidden'}">
+          <div class="history-detail-summary">${(item.items || []).length} productos · Total ${esc(money(item.total || 0))}</div>
+          ${detalle}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function toggleSalesHistoryD9(id) {
+  state.salesHistoryOpenId = state.salesHistoryOpenId === id ? null : id;
+  renderSalesHistoryD9();
+}
+
+function deleteSalesHistoryD9(id) {
+  showConfirmD9({
+    title: "Distribuidora 9 dice:",
+    message: "¿Borrar esta venta del historial local?",
+    okText: "Borrar",
+    cancelText: "Cancelar",
+    danger: true,
+    onOk: () => {
+      const history = readJSON(STORAGE_KEYS.salesHistory, []);
+      saveJSON(STORAGE_KEYS.salesHistory, history.filter(x => (x.id || x.venta_id) !== id));
+      if (state.salesHistoryOpenId === id) state.salesHistoryOpenId = null;
+      renderSalesHistoryD9();
+      toast("Venta eliminada del historial local.");
     }
-  }
-  return lastError || { ok: false, error: "No se pudo guardar la venta mostrador" };
+  });
 }
 
 function buildMostradorTextD9() {
   const fecha = new Date().toLocaleString("es-AR");
-  const operador = state.seller?.nombre || state.seller?.usuario || "Mostrador";
+  const operador = state.seller?.nombre || "Mostrador";
   const cliente = state.mostradorClient?.nombre_real || state.mostradorClient?.nombre || "Consumidor final";
   const lines = [
-    "🧾 VENTA MOSTRADOR",
-    `Cliente: ${cliente}`,
-    `Usuario: ${operador}`,
+    "REMITO INTERNO / MOSTRADOR",
     `Fecha: ${fecha}`,
+    `Operador: ${operador}`,
+    `Cliente: ${cliente}`,
     "────────────────────"
   ];
-
   state.mostradorCart.forEach((item, i) => {
-    const precio = asegurarPrecioMostradorD9(item);
-    const cantidad = Number(item.cantidad || 0);
-    const total = cantidad * Number(precio || 0);
-    lines.push(`${i + 1}) ${item.nombre}`);
-    lines.push(`   Cant/Peso: ${fmtQtyD9(cantidad)} · P.Unit: ${money(precio)}`);
-    lines.push(`   Total: ${money(total)}`);
+    const total = (Number(item.cantidad)||0) * (Number(item.precio)||0);
+    lines.push(`${i+1}) ${item.nombre}`);
+    lines.push(`   Cant/Peso: ${fmtQtyD9(item.cantidad)} · Unit: ${money(item.precio)} · Total: ${money(total)}`);
   });
-
   lines.push("────────────────────");
   lines.push(`TOTAL: ${money(mostradorTotalD9())}`);
   lines.push("Comprobante no oficial");
@@ -3795,36 +3909,31 @@ function buildMostradorTextD9() {
 }
 function whatsappMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
-
   const payload = buildMostradorPayloadD9();
-  const userWaReport = String(state.seller?.wasap_report || "").trim();
-  const waPhone = userWaReport || getDefaultWhatsAppD9();
-  const waText = buildMostradorTextD9();
+  const phone = onlyDigits(state.seller?.wasap_report || getDefaultWhatsAppD9());
+  const text = buildMostradorTextD9();
+  const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
 
-  if (!openWhatsApp(waPhone, waText)) {
-    toast("Falta WhatsApp destino en usuario o confi.");
-    return;
+  saveMostradorHistoryD9(payload, "enviado", "WhatsApp abierto");
+
+  if (navigator.onLine) {
+    sendMostradorVentaToSheetD9(payload)
+      .then(res => {
+        if (!res?.ok) {
+          saveMostradorHistoryD9(payload, "pendiente", res?.error || "No se confirmó en Sheet");
+          console.warn("Venta mostrador pendiente:", res?.error || res);
+        }
+      })
+      .catch(err => {
+        saveMostradorHistoryD9(payload, "pendiente", String(err));
+        console.warn("Venta mostrador pendiente:", err);
+      });
+  } else {
+    saveMostradorHistoryD9(payload, "pendiente", "Sin conexión");
   }
-
-  if (!navigator.onLine) {
-    toast("Venta abierta en WhatsApp. Sin internet para registrar en Sheets.");
-    return;
-  }
-
-  trySendMostradorToWebhookD9(payload)
-    .then(res => {
-      if (res?.ok) {
-        toast(res?.data?.duplicated ? "Venta ya registrada." : "Venta registrada.");
-      } else {
-        toast("WhatsApp abierto, pero no pude registrar la venta.");
-        console.warn("Venta mostrador no registrada:", res?.error || res);
-      }
-    })
-    .catch(err => {
-      toast("WhatsApp abierto, pero falló el registro.");
-      console.error("Error registrando venta mostrador:", err);
-    });
 }
+
 function printMostradorD9() {
   if (!state.mostradorCart.length) return toast("Agregá productos.");
   const rows = state.mostradorCart.map(item => {
@@ -3860,6 +3969,49 @@ function setupMostradorHomeD9() {
   `;
   homeView.insertBefore(btn, orderBtn);
 }
+
+function setupMostradorHistoryHomeD9() {
+  const grid = document.querySelector(".home-grid-vnext");
+  if (!grid || document.getElementById("btnGoSalesHistoryD9")) return;
+  const btn = document.createElement("button");
+  btn.id = "btnGoSalesHistoryD9";
+  btn.className = "action-card-vnext hidden";
+  btn.type = "button";
+  btn.innerHTML = `
+    <span class="action-head-vnext">
+      <span class="icon-wrap-vnext cyan">🧾</span>
+      <span class="title-group-vnext">
+        <strong>Historial ventas</strong>
+        <small>Ventas mostrador locales</small>
+      </span>
+    </span>
+    <span class="go-vnext">›</span>
+  `;
+  const userBtn = document.getElementById("btnChangeSeller");
+  grid.insertBefore(btn, userBtn || grid.firstChild);
+}
+
+function setupSalesHistoryViewD9() {
+  const main = document.querySelector("main");
+  if (!main || document.getElementById("view-sales-history-d9")) return;
+  const sec = document.createElement("section");
+  sec.id = "view-sales-history-d9";
+  sec.className = "view";
+  sec.innerHTML = `
+    <div class="view-head history-head-d9">
+      <button class="back-btn history-home-d9 home-red-d9" data-back="home" type="button" aria-label="Volver al inicio">🏠</button>
+      <div class="history-title-d9">
+        <h2>Historial ventas</h2>
+        <p class="subhead">Ventas de mostrador guardadas en este celular.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div id="salesHistoryListD9" class="history-list empty-state">Sin ventas guardadas todavía.</div>
+    </div>
+  `;
+  main.appendChild(sec);
+}
+
 function setupMostradorViewD9() {
   const main = document.querySelector("main");
   if (!main || document.getElementById("view-mostrador")) return;
@@ -3900,10 +4052,14 @@ function setupMostradorViewD9() {
 
 function renderMostradorRoleD9() {
   setupMostradorHomeD9();
+  setupMostradorHistoryHomeD9();
   setupMostradorViewD9();
+  setupSalesHistoryViewD9();
   const on = isMostradorD9();
   document.getElementById("btnGoMostrador")?.classList.toggle("hidden", !on);
+  document.getElementById("btnGoSalesHistoryD9")?.classList.toggle("hidden", !on);
   document.getElementById("bannerWrap")?.classList.toggle("hidden", on);
+  if (on) renderSalesHistoryD9();
 }
 
 function renderAll() {
