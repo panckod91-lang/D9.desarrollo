@@ -3512,3 +3512,46 @@ button:active,
   .mostrador-qty-edit-manual-d9{ min-width:82px; height:46px; padding:0 9px; border-radius:14px; font-size:15px; }
   .mostrador-line-controls-d9 strong{ font-size:22px; }
 }
+
+
+/* D9 v1.2.8 mostrador: botón Quitar arriba a la derecha */
+.mostrador-cart-item-d9{
+  position:relative;
+  padding:18px 18px 16px;
+  overflow:hidden;
+}
+.mostrador-cart-item-d9 .cart-item-top{
+  display:block;
+  padding-right:118px;
+  min-height:66px;
+}
+.mostrador-cart-item-d9 .cart-item-top .remove-btn{
+  position:absolute;
+  top:18px;
+  right:18px;
+  min-width:92px;
+  height:58px;
+  border-radius:18px;
+  font-size:17px;
+  font-weight:900;
+  z-index:2;
+}
+.mostrador-cart-item-d9 .cart-title{
+  padding-right:0;
+}
+.mostrador-line-controls-d9{
+  margin-top:8px;
+}
+@media(max-width:420px){
+  .mostrador-cart-item-d9{ padding:16px 14px; }
+  .mostrador-cart-item-d9 .cart-item-top{
+    padding-right:104px;
+    min-height:62px;
+  }
+  .mostrador-cart-item-d9 .cart-item-top .remove-btn{
+    top:16px;
+    right:14px;
+    min-width:86px;
+    height:54px;
+  }
+}
