@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.10-dev (verifica PC tras error)";
+const APP_VERSION = "v1.3.11-dev (ID único tras envío WhatsApp)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3399,6 +3399,9 @@ async function sendOrder() {
         if (!res || !res.ok) {
           savePendingPayload(payload);
           saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
+          // IMPORTANTE: el pedido ya salió por WhatsApp y quedó guardado con su ID.
+          // Limpiamos el borrador para que el próximo pedido NO reutilice el mismo ID.
+          clearDraftPedidoIdD9();
           renderPendingBadge();
           console.warn("Pedido pendiente:", res?.error);
         } else {
@@ -3410,6 +3413,8 @@ async function sendOrder() {
       .catch(err => {
         savePendingPayload(payload);
         saveHistory(payload, "pendiente", String(err));
+        // También en error total: el próximo pedido debe nacer con ID nuevo.
+        clearDraftPedidoIdD9();
         renderPendingBadge();
         console.error("Error total, guardado local:", err);
       });
