@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.8-dev (manual PC + resync seguro)";
+const APP_VERSION = "v1.3.9-dev (historial botones compactos)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3551,9 +3551,8 @@ function renderHistory() {
             <strong>${esc(item.cliente)}</strong>
             <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
             <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${item.error ? ' · ' + esc(item.error) : ''}</div>
-            <div class="history-actions" data-no-toggle>
-              <button class="history-action-btn" data-resync-history="${esc(itemId)}" type="button">🔁 Reenviar a PC</button>
-              <button class="history-action-btn" data-manual-load-history="${esc(itemId)}" type="button">📝 Cargar manual</button>
+            <div class="history-actions history-actions-compact-d9" data-no-toggle>
+              ${pcText === "Cargado en PC" ? '' : (debugId ? `<button class="history-action-btn history-action-main-d9" data-resync-history="${esc(itemId)}" type="button">🔁 Reenviar a PC</button>` : `<button class="history-action-btn history-action-main-d9" data-manual-load-history="${esc(itemId)}" type="button">📝 Cargar manual</button>`)}
               <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
               <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar pedido del historial">🗑️</button>
             </div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v44-manual-pc";
+const CACHE_NAME = "d9-dev-cache-v45-history-buttons-compact";
 const URLS = [
   "./",
   "./index.html",

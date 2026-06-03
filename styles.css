@@ -3584,3 +3584,61 @@ button:active,
 }
 
 .history-debug-d9{margin:8px 0 10px 0;padding:8px 10px;border-radius:10px;background:#fff7d8;color:#12304f;font-size:.82rem;}
+
+
+/* D9 v1.3.9 - historial: botones compactos y sin romper etiquetas */
+.history-actions.history-actions-compact-d9{
+  display:grid;
+  grid-template-columns: minmax(118px, 1fr) minmax(96px, .85fr) 42px;
+  gap:8px;
+  align-items:center;
+  justify-content:stretch;
+  width:100%;
+  max-width:100%;
+  overflow:hidden;
+}
+.history-actions.history-actions-compact-d9 .history-action-btn,
+.history-actions.history-actions-compact-d9 .history-delete-btn{
+  width:100%;
+  min-width:0;
+  height:38px;
+  padding:7px 8px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  border-radius:12px;
+}
+.history-actions.history-actions-compact-d9 .history-delete-btn{
+  min-width:42px;
+  padding:7px 0;
+}
+.history-action-main-d9{
+  font-weight:850;
+}
+.history-meta-line{
+  overflow-wrap:anywhere;
+}
+.history-resync-toolbar-d9{
+  max-width:100%;
+  overflow:hidden;
+}
+.history-resync-toolbar-d9 .history-action-btn{
+  width:100%;
+  max-width:100%;
+  min-height:38px;
+  white-space:normal;
+  line-height:1.15;
+}
+@media(max-width:380px){
+  .history-actions.history-actions-compact-d9{
+    grid-template-columns: 1fr 1fr 38px;
+    gap:6px;
+  }
+  .history-actions.history-actions-compact-d9 .history-action-btn{
+    font-size:11px;
+    padding:7px 6px;
+  }
+}
