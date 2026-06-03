@@ -1,0 +1,12 @@
+D9 v1.3.6 - Reenviar a PC verificado
+
+- Basado en v1.3.4, NO en v1.3.5.
+- Reenviar a PC usa el ID original del historial siempre que exista.
+- Verifica por list_pedidos buscando el ID real de la columna ID comp. / id_comp. / variantes.
+- Si ya está en PC, no hace POST y marca Ya recibido previamente.
+- Si no está, hace POST y luego verifica hasta 3 veces antes de marcar Cargado en PC.
+- Si no puede confirmar, queda como No llegó a PC y no se marca como cargado.
+
+IMPORTANTE:
+- Probar con el script actual primero.
+- No usar el apps_script_v3.js chico del ZIP como reemplazo de Apps Script.

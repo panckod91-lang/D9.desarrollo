@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.4-dev (resync PC ID fijo)";
+const APP_VERSION = "v1.3.6-dev (resync PC verificado)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2863,33 +2863,67 @@ async function sendToEndpoint(url, sendPayload) {
 
 function getPedidoIdFromPcRowD9(p) {
   if (!p || typeof p !== "object") return "";
-  // La hoja real usa encabezado "ID comp." que llega normalizado como id_comp.
-  // También soportamos nombres viejos/nuevos por seguridad.
-  const direct = p.pedido_id || p.pedidoid || p.id_pedido || p.id_comp || p.id_compra || p.id || "";
-  if (direct) return String(direct).trim();
-  // Fallback defensivo: buscar cualquier clave que parezca contener el ID del pedido.
-  for (const [k, v] of Object.entries(p)) {
-    const key = String(k || "").toLowerCase();
-    if ((key.includes("pedido") || key.includes("comp")) && v) return String(v).trim();
+
+  // La hoja real puede venir como "ID comp.", normalizado por Apps Script como "id_comp.".
+  // También soportamos variantes sin punto, nombres nuevos/viejos y diferencias de mayúsculas.
+  const directKeys = [
+    "pedido_id", "pedidoid", "id_pedido", "id_comp", "id_comp.",
+    "id_compra", "id_compra.", "id", "venta_id"
+  ];
+
+  for (const k of directKeys) {
+    if (p[k]) return String(p[k]).trim();
   }
+
+  // Fallback más robusto: normaliza claves quitando puntos, espacios y símbolos.
+  for (const [k, v] of Object.entries(p)) {
+    if (!v) continue;
+    const key = String(k || "")
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    if (key === "id_comp" || key === "id_compra" || key === "pedido_id" || key === "id_pedido") {
+      return String(v).trim();
+    }
+    if ((key.includes("pedido") || (key.includes("id") && key.includes("comp"))) && v) {
+      return String(v).trim();
+    }
+  }
+
   return "";
 }
 
-async function verifyPedidoInPcD9(pedidoId) {
+function delayD9(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function verifyPedidoInPcD9(pedidoId, attempts = 3) {
   const id = String(pedidoId || "").trim();
   if (!id) return { ok: false, error: "Pedido sin ID para verificar" };
 
-  try {
-    const r = await fetch(`${getApiBaseD9()}?action=list_pedidos&_=${Date.now()}`, { cache: "no-store" });
-    const data = await r.json();
-    if (!r.ok || data?.ok !== true || !Array.isArray(data.pedidos)) {
-      return { ok: false, error: data?.error || "La PC no devolvió lista de pedidos" };
+  let lastError = "La PC no confirmó que el pedido haya quedado cargado";
+
+  for (let intento = 1; intento <= attempts; intento++) {
+    try {
+      const r = await fetch(`${getApiBaseD9()}?action=list_pedidos&_=${Date.now()}`, { cache: "no-store" });
+      const data = await r.json();
+      if (!r.ok || data?.ok !== true || !Array.isArray(data.pedidos)) {
+        lastError = data?.error || "La PC no devolvió lista de pedidos";
+      } else {
+        const exists = data.pedidos.some(p => getPedidoIdFromPcRowD9(p) === id);
+        if (exists) return { ok: true };
+        lastError = "La PC no confirmó que el pedido haya quedado cargado";
+      }
+    } catch (err) {
+      lastError = `No pude verificar en PC: ${String(err)}`;
     }
-    const exists = data.pedidos.some(p => getPedidoIdFromPcRowD9(p) === id);
-    return exists ? { ok: true } : { ok: false, error: "La PC no confirmó que el pedido haya quedado cargado" };
-  } catch (err) {
-    return { ok: false, error: `No pude verificar en PC: ${String(err)}` };
+
+    if (intento < attempts) await delayD9(700 * intento);
   }
+
+  return { ok: false, error: lastError };
 }
 
 async function trySendToWebhook(payload) {
@@ -2984,11 +3018,15 @@ function updateHistoryStatusByPedidoIdD9(pedidoId, status, error = "") {
 function looksLikePedidoIdD9(value) {
   const v = String(value || "").trim();
   // Formato normal actual: vendedorId-CODIGO8, ej: 3-ZWKPU34J o 10-RH7738G6.
-  return /^\d{1,4}-[A-Z0-9]{6,12}$/i.test(v);
+  if (/^\d{1,4}-[A-Z0-9]{6,12}$/i.test(v)) return true;
+  // Fallback para historiales viejos ya guardados con otro formato local.
+  // No genera ID nuevo: si existe un ID local estable, lo reutilizamos para que no duplique al segundo intento.
+  if (/^[A-Za-z0-9_-]{6,40}$/.test(v) && !v.includes(" ")) return true;
+  return false;
 }
 
 function getHistoryPedidoIdD9(item) {
-  const pedidoId = String(item?.pedido_id || item?.pedidoId || "").trim();
+  const pedidoId = String(item?.pedido_id || item?.pedidoId || item?.id_pedido || "").trim();
   if (pedidoId) return pedidoId;
   const id = String(item?.id || "").trim();
   if (looksLikePedidoIdD9(id)) return id;
