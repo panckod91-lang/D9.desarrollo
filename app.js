@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.7-dev (debug resync PC)";
+const APP_VERSION = "v1.3.8-dev (manual PC + resync seguro)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3034,6 +3034,174 @@ function getHistoryPedidoIdD9(item) {
 }
 
 
+function hashManualPedidoIdD9(value) {
+  const text = String(value || "manual");
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36).toUpperCase().slice(0, 8).padStart(6, "0");
+}
+
+function inferVendedorIdFromHistoryD9(item) {
+  const direct = String(item?.vendedor_id || item?.vendedorId || "").trim();
+  if (direct) return direct;
+
+  // Algunos historiales viejos guardaban algo tipo fecha_5_xxxxx.
+  const rawId = String(item?.id || "").trim();
+  const parts = rawId.split("_");
+  const maybe = parts.find(part => /^\d{1,4}$/.test(part));
+  if (maybe) return maybe;
+
+  return String(state?.seller?.id || "0").trim();
+}
+
+function getManualPedidoIdD9(item) {
+  // ID estable: no es el ID comp. original, pero permite cargar manual sin duplicar al segundo intento.
+  const base = String(item?.id || `${item?.fecha || ""}_${item?.cliente || ""}_${item?.total || ""}` || Date.now()).trim();
+  const vendedorId = inferVendedorIdFromHistoryD9(item) || "0";
+  return `MAN-${vendedorId}-${hashManualPedidoIdD9(base)}`;
+}
+
+function updateHistoryItemByLocalIdD9(localId, patch) {
+  const id = String(localId || "").trim();
+  if (!id) return;
+  const history = readJSON(STORAGE_KEYS.history, []);
+  let changed = false;
+  const next = history.map(item => {
+    const itemId = String(item.id || item.pedido_id || item.pedidoId || "").trim();
+    if (itemId !== id) return item;
+    changed = true;
+    return { ...item, ...patch };
+  });
+  if (changed) {
+    saveJSON(STORAGE_KEYS.history, next);
+    renderHistory();
+    renderPendingBadge();
+  }
+}
+
+function buildManualPayloadFromHistoryItemD9(item) {
+  const items = Array.isArray(item?.items) ? item.items : [];
+  if (!items.length) {
+    return { ok: false, error: "Este registro no tiene productos completos para cargar manualmente." };
+  }
+
+  const pedidoId = getManualPedidoIdD9(item);
+  const vendedorId = inferVendedorIdFromHistoryD9(item);
+  const clienteData = item?.cliente_data || {
+    id: item?.cliente_id || "",
+    nombre: item?.cliente || "",
+    nombre_real: item?.cliente || ""
+  };
+
+  return {
+    ok: true,
+    pedido_id: pedidoId,
+    fecha: item?.fecha || new Date().toISOString(),
+    vendedor: { id: vendedorId || "", nombre: item?.vendedor || state.seller?.nombre || "" },
+    cliente: clienteData,
+    carrito: items.map(x => ({
+      id: x.id || x.id_producto || "",
+      nombre: x.nombre || "",
+      cantidad: Number(x.cantidad || 0),
+      precio: Number(x.precio || 0)
+    })),
+    total: Number(item?.total || 0),
+    detalle: item?.detalle || items.map(x => `${x.nombre || "Producto"} x${x.cantidad || 0}`).join(" | "),
+    resync_pc: true,
+    carga_manual_pc: true
+  };
+}
+
+async function manualLoadHistoryItemsToPcD9(ids) {
+  const selectedIds = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean);
+  if (!selectedIds.length) return toast("Seleccioná al menos un pedido.");
+  if (!navigator.onLine) return toast("Sin conexión. Probá cuando tengas internet.");
+
+  const history = readJSON(STORAGE_KEYS.history, []);
+  const selected = history.filter(item => selectedIds.includes(String(item.id || item.pedido_id || item.pedidoId || "")));
+  if (!selected.length) return toast("No encontré esos pedidos en historial.");
+
+  const msg = selected.length === 1
+    ? "Este pedido no tiene ID original. Se cargará manualmente en PC con un ID nuevo estable (MAN-...). ¿Continuar?"
+    : `${selected.length} pedidos se cargarán manualmente en PC con ID nuevo estable (MAN-...). ¿Continuar?`;
+  if (!confirm(msg)) return;
+
+  let ok = 0;
+  let already = 0;
+  let fail = 0;
+
+  for (const item of selected) {
+    const localId = String(item.id || item.pedido_id || item.pedidoId || "").trim();
+    const payload = buildManualPayloadFromHistoryItemD9(item);
+    if (!payload?.ok) {
+      fail++;
+      if (localId) updateHistoryItemByLocalIdD9(localId, { status: "pendiente", pc_status: "pendiente", error: payload?.error || "No se pudo cargar manualmente" });
+      continue;
+    }
+
+    try {
+      const exists = await verifyPedidoInPcD9(payload.pedido_id, 2);
+      if (exists?.ok) {
+        already++;
+        updateHistoryItemByLocalIdD9(localId, {
+          pedido_id: payload.pedido_id,
+          status: "ok",
+          pc_status: "cargado",
+          error: "Carga manual: ya recibido previamente"
+        });
+        continue;
+      }
+
+      const res = await trySendToWebhook(payload);
+      if (res?.ok) {
+        ok++;
+        updateHistoryItemByLocalIdD9(localId, {
+          pedido_id: payload.pedido_id,
+          vendedor_id: payload.vendedor?.id || item.vendedor_id || "",
+          status: "ok",
+          pc_status: "cargado",
+          error: res?.data?.duplicated ? "Carga manual: ya recibido previamente" : "Cargado manualmente en PC"
+        });
+      } else {
+        fail++;
+        updateHistoryItemByLocalIdD9(localId, {
+          pedido_id: payload.pedido_id,
+          vendedor_id: payload.vendedor?.id || item.vendedor_id || "",
+          status: "pendiente",
+          pc_status: "pendiente",
+          error: res?.error || "No llegó a PC"
+        });
+        savePendingPayload(payload);
+      }
+    } catch (err) {
+      fail++;
+      updateHistoryItemByLocalIdD9(localId, {
+        pedido_id: payload.pedido_id,
+        status: "pendiente",
+        pc_status: "pendiente",
+        error: String(err)
+      });
+      savePendingPayload(payload);
+    }
+  }
+
+  renderPendingBadge();
+  if ((ok || already) && !fail) {
+    const parts = [];
+    if (ok) parts.push(ok === 1 ? "1 cargado manualmente" : `${ok} cargados manualmente`);
+    if (already) parts.push(already === 1 ? "1 ya estaba en PC" : `${already} ya estaban en PC`);
+    toast(parts.join(" · "));
+  } else if ((ok || already) && fail) {
+    toast(`OK ${ok + already}. Fallaron ${fail}.`);
+  } else {
+    toast("No se pudo cargar manualmente en PC.");
+  }
+}
+
+
 function debugHistoryItemD9(item, payloadResult = null) {
   const rawId = String(item?.id || "").trim();
   const pedidoId = getHistoryPedidoIdD9(item);
@@ -3105,7 +3273,6 @@ async function resyncHistoryItemsToPcD9(ids) {
   let fail = 0;
   for (const item of selected) {
     const payload = buildPayloadFromHistoryItemD9(item);
-    showResyncDebugD9(item, payload, "antes de enviar");
     if (!payload?.ok) {
       fail++;
       toast(payload?.error || "No pude armar el pedido para reenviar.");
@@ -3343,6 +3510,7 @@ function renderHistory() {
   const toolbarHtml = `
     <div class="history-resync-toolbar-d9" data-no-toggle>
       <button class="history-action-btn" id="btnResyncSelectedHistoryD9" type="button">🔁 Reenviar seleccionados a PC</button>
+      <button class="history-action-btn" id="btnManualLoadSelectedHistoryD9" type="button">📝 Cargar manual seleccionados</button>
       <span class="mini-text">Para pedidos que salieron por WhatsApp pero no llegaron a la PC.</span>
     </div>`;
   list.innerHTML = toolbarHtml + history.map(item => {
@@ -3385,6 +3553,7 @@ function renderHistory() {
             <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${item.error ? ' · ' + esc(item.error) : ''}</div>
             <div class="history-actions" data-no-toggle>
               <button class="history-action-btn" data-resync-history="${esc(itemId)}" type="button">🔁 Reenviar a PC</button>
+              <button class="history-action-btn" data-manual-load-history="${esc(itemId)}" type="button">📝 Cargar manual</button>
               <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
               <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar pedido del historial">🗑️</button>
             </div>
@@ -3794,6 +3963,22 @@ function bind() {
       ev.stopPropagation();
       const ids = Array.from(document.querySelectorAll(".history-select-d9:checked")).map(x => x.dataset.historySelect);
       resyncHistoryItemsToPcD9(ids);
+      return;
+    }
+
+
+    const manualLoadSelectedHistory = ev.target.closest("#btnManualLoadSelectedHistoryD9");
+    if (manualLoadSelectedHistory) {
+      ev.stopPropagation();
+      const ids = Array.from(document.querySelectorAll(".history-select-d9:checked")).map(x => x.dataset.historySelect);
+      manualLoadHistoryItemsToPcD9(ids);
+      return;
+    }
+
+    const manualLoadHistory = ev.target.closest("[data-manual-load-history]");
+    if (manualLoadHistory) {
+      ev.stopPropagation();
+      manualLoadHistoryItemsToPcD9(manualLoadHistory.dataset.manualLoadHistory);
       return;
     }
 
