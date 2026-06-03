@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.6-dev (resync PC verificado)";
+const APP_VERSION = "v1.3.7-dev (debug resync PC)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3033,6 +3033,41 @@ function getHistoryPedidoIdD9(item) {
   return "";
 }
 
+
+function debugHistoryItemD9(item, payloadResult = null) {
+  const rawId = String(item?.id || "").trim();
+  const pedidoId = getHistoryPedidoIdD9(item);
+  const items = Array.isArray(item?.items) ? item.items : [];
+  const carrito = payloadResult?.ok && Array.isArray(payloadResult.carrito) ? payloadResult.carrito : [];
+  const keys = item && typeof item === "object" ? Object.keys(item).slice(0, 30).join(", ") : "sin objeto";
+  return [
+    "DEBUG REENVIAR A PC",
+    `ID detectado: ${pedidoId || "NO"}`,
+    `item.id: ${rawId || "NO"}`,
+    `item.pedido_id: ${item?.pedido_id || "NO"}`,
+    `item.pedidoId: ${item?.pedidoId || "NO"}`,
+    `items en historial: ${items.length}`,
+    `carrito armado: ${carrito.length}`,
+    `cliente: ${item?.cliente || "NO"}`,
+    `vendedor: ${item?.vendedor || "NO"}`,
+    `vendedor_id: ${item?.vendedor_id || "NO"}`,
+    `total: ${item?.total || "NO"}`,
+    `endpoint(s): ${(Array.isArray(WEBHOOK_ENDPOINTS) ? WEBHOOK_ENDPOINTS.length : 0)}`,
+    `claves: ${keys}`,
+    payloadResult?.ok ? "payload: OK" : `payload error: ${payloadResult?.error || "NO"}`
+  ].join("\n");
+}
+
+function showResyncDebugD9(item, payloadResult = null, stage = "inicio") {
+  const text = `${stage.toUpperCase()}\n${debugHistoryItemD9(item, payloadResult)}`;
+  console.log(text, { item, payloadResult, stage });
+  try {
+    alert(text);
+  } catch (_) {
+    toast(text.split("\n").slice(0, 3).join(" · "));
+  }
+}
+
 function buildPayloadFromHistoryItemD9(item) {
   const pedidoId = getHistoryPedidoIdD9(item);
   if (!pedidoId) {
@@ -3070,10 +3105,16 @@ async function resyncHistoryItemsToPcD9(ids) {
   let fail = 0;
   for (const item of selected) {
     const payload = buildPayloadFromHistoryItemD9(item);
-    if (!payload?.ok) { fail++; continue; }
+    showResyncDebugD9(item, payload, "antes de enviar");
+    if (!payload?.ok) {
+      fail++;
+      toast(payload?.error || "No pude armar el pedido para reenviar.");
+      continue;
+    }
     if (!payload.carrito.length) {
       fail++;
       updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", "Registro sin detalle de productos");
+      toast("No pude reenviar: el historial no tiene productos completos.");
       continue;
     }
 
@@ -3308,9 +3349,13 @@ function renderHistory() {
     const itemId = item.id || `${item.fecha}_${item.cliente}_${item.total}`;
     const isOpen = state.historyOpenId === itemId;
     const items = Array.isArray(item.items) ? item.items : [];
+    const debugId = getHistoryPedidoIdD9(item);
+    const debugHtml = `
+          <div class="mini-text history-debug-d9"><strong>ID interno:</strong> ${esc(debugId || 'NO ENCONTRADO')} · items: ${items.length} · vend_id: ${esc(item.vendedor_id || 'NO')}</div>`;
     const detailHtml = items.length
       ? `
         <div class="history-detail ${isOpen ? '' : 'hidden'}" id="detail-${esc(itemId)}">
+          ${debugHtml}
           ${items.map(prod => `
             <div class="history-product-row">
               <div class="history-product-main">
@@ -3325,6 +3370,7 @@ function renderHistory() {
         </div>`
       : `
         <div class="history-detail ${isOpen ? '' : 'hidden'}" id="detail-${esc(itemId)}">
+          ${debugHtml}
           <div class="mini-text">${esc(item.detalle || 'Sin detalle cargado.')}</div>
         </div>`;
 
