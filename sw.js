@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v45-history-buttons-compact";
+const CACHE_NAME = "d9-dev-cache-v46-verify-after-post-error";
 const URLS = [
   "./",
   "./index.html",

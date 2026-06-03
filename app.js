@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.9-dev (historial botones compactos)";
+const APP_VERSION = "v1.3.10-dev (verifica PC tras error)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2934,6 +2934,31 @@ async function trySendToWebhook(payload) {
   const sendPayload = buildWebhookPayload(payload);
   let lastError = null;
 
+  async function verifyAfterSendProblemD9(endpoint, errorText) {
+    // Caso real detectado: Apps Script puede escribir en PC, pero el navegador perder
+    // la confirmación del POST (Failed to fetch / redirect / conexión gris).
+    // Antes de declarar "No llegó a PC", verificamos por ID.
+    try {
+      const verify = await verifyPedidoInPcD9(sendPayload.pedido_id, 3);
+      if (verify?.ok) {
+        return {
+          ok: true,
+          endpoint,
+          data: {
+            ok: true,
+            duplicated: true,
+            pedido_id: sendPayload.pedido_id,
+            verified_after_error: true,
+            message: "El pedido ya estaba cargado en PC. Se corrigió el estado local."
+          }
+        };
+      }
+      return { ok: false, error: verify?.error || errorText || "No confirmado en PC", endpoint };
+    } catch (verifyErr) {
+      return { ok: false, error: errorText || String(verifyErr), endpoint };
+    }
+  }
+
   for (const endpoint of WEBHOOK_ENDPOINTS) {
     try {
       const result = await sendToEndpoint(endpoint, sendPayload);
@@ -2942,10 +2967,13 @@ async function trySendToWebhook(payload) {
         if (verify.ok) return result;
         lastError = { ok: false, error: verify.error || "No confirmado en PC", endpoint, data: result.data };
       } else {
-        lastError = result || { ok: false, error: `Fallo en ${endpoint}`, endpoint };
+        // Aunque el POST haya vuelto raro/no confirmado, puede haber escrito en PC.
+        lastError = await verifyAfterSendProblemD9(endpoint, result?.error || `Fallo en ${endpoint}`);
+        if (lastError?.ok) return lastError;
       }
     } catch (error) {
-      lastError = { ok: false, error: String(error), endpoint };
+      lastError = await verifyAfterSendProblemD9(endpoint, String(error));
+      if (lastError?.ok) return lastError;
     }
   }
 
