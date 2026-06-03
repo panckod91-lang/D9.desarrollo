@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.2-dev (ventas guardado único + reutilizar)";
+const APP_VERSION = "v1.3.3-dev (resync PC + pendientes blindados)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2849,7 +2849,30 @@ async function sendToEndpoint(url, sendPayload) {
     return { ok: false, status: r.status, error: data?.error || raw || "Error HTTP", endpoint: url };
   }
 
-  return { ok: !!data?.ok, data, endpoint: url };
+  // Blindaje D9: no alcanza con que el fetch termine.
+  // Solo consideramos enviado si el backend responde JSON con ok:true.
+  if (!data || data.ok !== true) {
+    return { ok: false, status: r.status, error: data?.error || raw || "La PC no confirmó el pedido", data, endpoint: url };
+  }
+
+  return { ok: true, data, endpoint: url };
+}
+
+async function verifyPedidoInPcD9(pedidoId) {
+  const id = String(pedidoId || "").trim();
+  if (!id) return { ok: false, error: "Pedido sin ID para verificar" };
+
+  try {
+    const r = await fetch(`${getApiBaseD9()}?action=list_pedidos&_=${Date.now()}`, { cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok || data?.ok !== true || !Array.isArray(data.pedidos)) {
+      return { ok: false, error: data?.error || "La PC no devolvió lista de pedidos" };
+    }
+    const exists = data.pedidos.some(p => String(p.pedido_id || p.pedidoid || p.id_pedido || "").trim() === id);
+    return exists ? { ok: true } : { ok: false, error: "La PC no confirmó que el pedido haya quedado cargado" };
+  } catch (err) {
+    return { ok: false, error: `No pude verificar en PC: ${String(err)}` };
+  }
 }
 
 async function trySendToWebhook(payload) {
@@ -2863,8 +2886,13 @@ async function trySendToWebhook(payload) {
   for (const endpoint of WEBHOOK_ENDPOINTS) {
     try {
       const result = await sendToEndpoint(endpoint, sendPayload);
-      if (result?.ok) return result;
-      lastError = result || { ok: false, error: `Fallo en ${endpoint}`, endpoint };
+      if (result?.ok) {
+        const verify = await verifyPedidoInPcD9(sendPayload.pedido_id);
+        if (verify.ok) return result;
+        lastError = { ok: false, error: verify.error || "No confirmado en PC", endpoint, data: result.data };
+      } else {
+        lastError = result || { ok: false, error: `Fallo en ${endpoint}`, endpoint };
+      }
     } catch (error) {
       lastError = { ok: false, error: String(error), endpoint };
     }
@@ -2875,15 +2903,22 @@ async function trySendToWebhook(payload) {
 
 function saveHistory(payload, status = "enviado", error = "") {
   const history = readJSON(STORAGE_KEYS.history, []);
-  history.unshift({
-    id: `${payload.fecha}_${payload.cliente?.id || payload.cliente?.nombre_real || payload.cliente?.nombre || "pedido"}_${Math.random().toString(36).slice(2, 8)}`,
+  const pedidoId = String(payload?.pedido_id || payload?.pedidoId || "").trim();
+  const existingIndex = pedidoId ? history.findIndex(x => String(x.pedido_id || "").trim() === pedidoId) : -1;
+  const entry = {
+    id: pedidoId || `${payload.fecha}_${payload.cliente?.id || payload.cliente?.nombre_real || payload.cliente?.nombre || "pedido"}_${Math.random().toString(36).slice(2, 8)}`,
+    pedido_id: pedidoId,
     fecha: payload.fecha,
     vendedor: payload.vendedor?.nombre || "",
+    vendedor_id: payload.vendedor?.id || "",
     cliente: payload.cliente?.nombre_real || payload.cliente?.nombre || "",
     cliente_id: payload.cliente?.id || "",
+    cliente_data: payload.cliente || null,
     detalle: payload.detalle,
     total: payload.total,
     status,
+    pc_status: status === "ok" ? "cargado" : "pendiente",
+    whatsapp_status: "enviado",
     items: (payload.carrito || []).map(x => ({
       id: x.id,
       nombre: x.nombre,
@@ -2892,7 +2927,9 @@ function saveHistory(payload, status = "enviado", error = "") {
       subtotal: Number(x.precio || 0) * Number(x.cantidad || 0)
     })),
     error
-  });
+  };
+  if (existingIndex >= 0) history[existingIndex] = { ...history[existingIndex], ...entry };
+  else history.unshift(entry);
   saveJSON(STORAGE_KEYS.history, history.slice(0, 300));
   renderHistory();
   renderMostradorRoleD9();
@@ -2901,9 +2938,84 @@ function saveHistory(payload, status = "enviado", error = "") {
 
 function savePendingPayload(payload) {
   const pending = readJSON(STORAGE_KEYS.pending, []);
+  const pedidoId = String(payload?.pedido_id || payload?.pedidoId || "").trim();
+  if (pedidoId && pending.some(x => String(x?.pedido_id || x?.pedidoId || "").trim() === pedidoId)) {
+    renderPendingBadge();
+    return;
+  }
   pending.push(payload);
   saveJSON(STORAGE_KEYS.pending, pending);
   renderPendingBadge();
+}
+
+function updateHistoryStatusByPedidoIdD9(pedidoId, status, error = "") {
+  const id = String(pedidoId || "").trim();
+  if (!id) return;
+  const history = readJSON(STORAGE_KEYS.history, []);
+  let changed = false;
+  const next = history.map(item => {
+    if (String(item.pedido_id || item.id || "").trim() !== id) return item;
+    changed = true;
+    return { ...item, status, pc_status: status === "ok" ? "cargado" : "pendiente", error };
+  });
+  if (changed) {
+    saveJSON(STORAGE_KEYS.history, next);
+    renderHistory();
+  }
+}
+
+function buildPayloadFromHistoryItemD9(item) {
+  const pedidoId = String(item?.pedido_id || "").trim() || `RESYNC-${String(item?.id || Date.now()).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40)}`;
+  const clienteData = item?.cliente_data || {
+    id: item?.cliente_id || "",
+    nombre: item?.cliente || "",
+    nombre_real: item?.cliente || ""
+  };
+  return {
+    pedido_id: pedidoId,
+    fecha: item?.fecha || new Date().toISOString(),
+    vendedor: { id: item?.vendedor_id || state.seller?.id || "", nombre: item?.vendedor || state.seller?.nombre || "" },
+    cliente: clienteData,
+    carrito: (item?.items || []).map(x => ({ id: x.id || "", nombre: x.nombre || "", cantidad: Number(x.cantidad || 0), precio: Number(x.precio || 0) })),
+    total: Number(item?.total || 0),
+    detalle: item?.detalle || ""
+  };
+}
+
+async function resyncHistoryItemsToPcD9(ids) {
+  const selectedIds = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean);
+  if (!selectedIds.length) return toast("Seleccioná al menos un pedido.");
+  if (!navigator.onLine) return toast("Sin conexión. Probá cuando tengas internet.");
+
+  const history = readJSON(STORAGE_KEYS.history, []);
+  const selected = history.filter(item => selectedIds.includes(String(item.id || item.pedido_id || "")));
+  if (!selected.length) return toast("No encontré esos pedidos en historial.");
+
+  let ok = 0;
+  let fail = 0;
+  for (const item of selected) {
+    const payload = buildPayloadFromHistoryItemD9(item);
+    if (!payload.carrito.length) { fail++; continue; }
+    try {
+      const res = await trySendToWebhook(payload);
+      if (res?.ok) {
+        ok++;
+        updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", res?.data?.duplicated ? "Ya estaba cargado en PC" : "Reenviado a PC");
+      } else {
+        fail++;
+        updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", res?.error || "No llegó a PC");
+        savePendingPayload(payload);
+      }
+    } catch (err) {
+      fail++;
+      updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", String(err));
+      savePendingPayload(payload);
+    }
+  }
+  renderPendingBadge();
+  if (ok && !fail) toast(ok === 1 ? "Pedido reenviado a PC." : `${ok} pedidos reenviados a PC.`);
+  else if (ok && fail) toast(`Reenviados ${ok}. Fallaron ${fail}.`);
+  else toast("No se pudo reenviar a PC. Quedó pendiente.");
 }
 
 async function sendOrder() {
@@ -3043,10 +3155,13 @@ async function syncPending() {
         const result = await trySendToWebhook(item);
         if (result.ok) {
           sentCount++;
+          updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", result?.data?.duplicated ? "Ya estaba cargado en PC" : "Cargado en PC");
         } else {
+          updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "pendiente", result?.error || "No llegó a PC");
           remaining.push(item);
         }
-      } catch {
+      } catch (err) {
+        updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "pendiente", String(err));
         remaining.push(item);
       }
     }
@@ -3088,7 +3203,12 @@ function renderHistory() {
   }
 
   list.className = "history-list";
-  list.innerHTML = history.map(item => {
+  const toolbarHtml = `
+    <div class="history-resync-toolbar-d9" data-no-toggle>
+      <button class="history-action-btn" id="btnResyncSelectedHistoryD9" type="button">🔁 Reenviar seleccionados a PC</button>
+      <span class="mini-text">Para pedidos que salieron por WhatsApp pero no llegaron a la PC.</span>
+    </div>`;
+  list.innerHTML = toolbarHtml + history.map(item => {
     const itemId = item.id || `${item.fecha}_${item.cliente}_${item.total}`;
     const isOpen = state.historyOpenId === itemId;
     const items = Array.isArray(item.items) ? item.items : [];
@@ -3112,14 +3232,17 @@ function renderHistory() {
           <div class="mini-text">${esc(item.detalle || 'Sin detalle cargado.')}</div>
         </div>`;
 
+    const pcText = item.pc_status === "cargado" || item.status === "ok" ? "Cargado en PC" : "No llegó a PC";
     return `
       <div class="history-item ${isOpen ? 'is-open' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
         <div class="history-head-row">
           <div class="history-copy">
+            <label class="history-select-line-d9" data-no-toggle><input type="checkbox" class="history-select-d9" data-history-select="${esc(itemId)}"> <span>Seleccionar</span></label>
             <strong>${esc(item.cliente)}</strong>
             <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
-            <div class="mini-text history-meta-line">${esc(item.vendedor)} · ${esc(item.status || "")}${item.error ? ' · ' + esc(item.error) : ''}</div>
+            <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${item.error ? ' · ' + esc(item.error) : ''}</div>
             <div class="history-actions" data-no-toggle>
+              <button class="history-action-btn" data-resync-history="${esc(itemId)}" type="button">🔁 Reenviar a PC</button>
               <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
               <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar pedido del historial">🗑️</button>
             </div>
@@ -3524,6 +3647,21 @@ function bind() {
     const remove = ev.target.closest("[data-remove-id]");
     if (remove) removeItem(remove.dataset.removeId);
 
+    const resyncSelectedHistory = ev.target.closest("#btnResyncSelectedHistoryD9");
+    if (resyncSelectedHistory) {
+      ev.stopPropagation();
+      const ids = Array.from(document.querySelectorAll(".history-select-d9:checked")).map(x => x.dataset.historySelect);
+      resyncHistoryItemsToPcD9(ids);
+      return;
+    }
+
+    const resyncHistory = ev.target.closest("[data-resync-history]");
+    if (resyncHistory) {
+      ev.stopPropagation();
+      resyncHistoryItemsToPcD9(resyncHistory.dataset.resyncHistory);
+      return;
+    }
+
     const reuseHistory = ev.target.closest("[data-reuse-history]");
     if (reuseHistory) {
       ev.stopPropagation();
@@ -3919,7 +4057,12 @@ function renderSalesHistoryD9() {
     return;
   }
   list.className = "history-list";
-  list.innerHTML = history.map(item => {
+  const toolbarHtml = `
+    <div class="history-resync-toolbar-d9" data-no-toggle>
+      <button class="history-action-btn" id="btnResyncSelectedHistoryD9" type="button">🔁 Reenviar seleccionados a PC</button>
+      <span class="mini-text">Para pedidos que salieron por WhatsApp pero no llegaron a la PC.</span>
+    </div>`;
+  list.innerHTML = toolbarHtml + history.map(item => {
     const id = item.id || item.venta_id || "";
     const isOpen = state.salesHistoryOpenId === id;
     const detalle = (item.items || []).map(prod => `
