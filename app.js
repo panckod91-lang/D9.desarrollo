@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.3-dev (resync PC + pendientes blindados)";
+const APP_VERSION = "v1.3.4-dev (resync PC ID fijo)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2826,7 +2826,10 @@ function buildWebhookPayload(payload) {
       precio: Number(item.precio || 0)
     })),
     total: Number(payload?.total || 0),
-    fecha: payload?.fecha || new Date().toISOString()
+    // Se manda para futuras versiones del script. El script actual puede ignorarlo.
+    fecha: payload?.fecha || new Date().toISOString(),
+    fecha_original: payload?.fecha || "",
+    resync_pc: payload?.resync_pc === true
   };
 }
 
@@ -2858,6 +2861,20 @@ async function sendToEndpoint(url, sendPayload) {
   return { ok: true, data, endpoint: url };
 }
 
+function getPedidoIdFromPcRowD9(p) {
+  if (!p || typeof p !== "object") return "";
+  // La hoja real usa encabezado "ID comp." que llega normalizado como id_comp.
+  // También soportamos nombres viejos/nuevos por seguridad.
+  const direct = p.pedido_id || p.pedidoid || p.id_pedido || p.id_comp || p.id_compra || p.id || "";
+  if (direct) return String(direct).trim();
+  // Fallback defensivo: buscar cualquier clave que parezca contener el ID del pedido.
+  for (const [k, v] of Object.entries(p)) {
+    const key = String(k || "").toLowerCase();
+    if ((key.includes("pedido") || key.includes("comp")) && v) return String(v).trim();
+  }
+  return "";
+}
+
 async function verifyPedidoInPcD9(pedidoId) {
   const id = String(pedidoId || "").trim();
   if (!id) return { ok: false, error: "Pedido sin ID para verificar" };
@@ -2868,7 +2885,7 @@ async function verifyPedidoInPcD9(pedidoId) {
     if (!r.ok || data?.ok !== true || !Array.isArray(data.pedidos)) {
       return { ok: false, error: data?.error || "La PC no devolvió lista de pedidos" };
     }
-    const exists = data.pedidos.some(p => String(p.pedido_id || p.pedidoid || p.id_pedido || "").trim() === id);
+    const exists = data.pedidos.some(p => getPedidoIdFromPcRowD9(p) === id);
     return exists ? { ok: true } : { ok: false, error: "La PC no confirmó que el pedido haya quedado cargado" };
   } catch (err) {
     return { ok: false, error: `No pude verificar en PC: ${String(err)}` };
@@ -2964,21 +2981,40 @@ function updateHistoryStatusByPedidoIdD9(pedidoId, status, error = "") {
   }
 }
 
+function looksLikePedidoIdD9(value) {
+  const v = String(value || "").trim();
+  // Formato normal actual: vendedorId-CODIGO8, ej: 3-ZWKPU34J o 10-RH7738G6.
+  return /^\d{1,4}-[A-Z0-9]{6,12}$/i.test(v);
+}
+
+function getHistoryPedidoIdD9(item) {
+  const pedidoId = String(item?.pedido_id || item?.pedidoId || "").trim();
+  if (pedidoId) return pedidoId;
+  const id = String(item?.id || "").trim();
+  if (looksLikePedidoIdD9(id)) return id;
+  return "";
+}
+
 function buildPayloadFromHistoryItemD9(item) {
-  const pedidoId = String(item?.pedido_id || "").trim() || `RESYNC-${String(item?.id || Date.now()).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40)}`;
+  const pedidoId = getHistoryPedidoIdD9(item);
+  if (!pedidoId) {
+    return { ok: false, error: "Este registro no tiene ID original. Usá Reutilizar o cargalo manualmente para evitar duplicados." };
+  }
   const clienteData = item?.cliente_data || {
     id: item?.cliente_id || "",
     nombre: item?.cliente || "",
     nombre_real: item?.cliente || ""
   };
   return {
+    ok: true,
     pedido_id: pedidoId,
     fecha: item?.fecha || new Date().toISOString(),
     vendedor: { id: item?.vendedor_id || state.seller?.id || "", nombre: item?.vendedor || state.seller?.nombre || "" },
     cliente: clienteData,
     carrito: (item?.items || []).map(x => ({ id: x.id || "", nombre: x.nombre || "", cantidad: Number(x.cantidad || 0), precio: Number(x.precio || 0) })),
     total: Number(item?.total || 0),
-    detalle: item?.detalle || ""
+    detalle: item?.detalle || "",
+    resync_pc: true
   };
 }
 
@@ -2988,19 +3024,34 @@ async function resyncHistoryItemsToPcD9(ids) {
   if (!navigator.onLine) return toast("Sin conexión. Probá cuando tengas internet.");
 
   const history = readJSON(STORAGE_KEYS.history, []);
-  const selected = history.filter(item => selectedIds.includes(String(item.id || item.pedido_id || "")));
+  const selected = history.filter(item => selectedIds.includes(String(item.id || item.pedido_id || item.pedidoId || "")));
   if (!selected.length) return toast("No encontré esos pedidos en historial.");
 
   let ok = 0;
+  let already = 0;
   let fail = 0;
   for (const item of selected) {
     const payload = buildPayloadFromHistoryItemD9(item);
-    if (!payload.carrito.length) { fail++; continue; }
+    if (!payload?.ok) { fail++; continue; }
+    if (!payload.carrito.length) {
+      fail++;
+      updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", "Registro sin detalle de productos");
+      continue;
+    }
+
     try {
+      // Primero verificamos. Si ya está en PC, NO hacemos POST y evitamos duplicados.
+      const exists = await verifyPedidoInPcD9(payload.pedido_id);
+      if (exists?.ok) {
+        already++;
+        updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", "Ya recibido previamente");
+        continue;
+      }
+
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
-        updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", res?.data?.duplicated ? "Ya estaba cargado en PC" : "Reenviado a PC");
+        updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Reenviado a PC");
       } else {
         fail++;
         updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", res?.error || "No llegó a PC");
@@ -3013,9 +3064,16 @@ async function resyncHistoryItemsToPcD9(ids) {
     }
   }
   renderPendingBadge();
-  if (ok && !fail) toast(ok === 1 ? "Pedido reenviado a PC." : `${ok} pedidos reenviados a PC.`);
-  else if (ok && fail) toast(`Reenviados ${ok}. Fallaron ${fail}.`);
-  else toast("No se pudo reenviar a PC. Quedó pendiente.");
+  if ((ok || already) && !fail) {
+    const parts = [];
+    if (ok) parts.push(ok === 1 ? "1 reenviado" : `${ok} reenviados`);
+    if (already) parts.push(already === 1 ? "1 ya estaba en PC" : `${already} ya estaban en PC`);
+    toast(parts.join(" · "));
+  } else if ((ok || already) && fail) {
+    toast(`OK ${ok + already}. Fallaron ${fail}.`);
+  } else {
+    toast("No se pudo reenviar a PC. Quedó pendiente.");
+  }
 }
 
 async function sendOrder() {
