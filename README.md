@@ -1,54 +1,28 @@
-# D9 Pedidos / Desarrollo
+# D9 Pedidos PWA
 
-PWA para toma de pedidos comerciales y ventas de mostrador para distribuidora.
+PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, cola local de pendientes y sincronización automática.
 
-## Estado
+## Stack actual
 
-Versión de desarrollo: v1.2.6-dev
+- Frontend: HTML, CSS y JS puro.
+- Hosting: Cloudflare Pages.
+- Lectura de datos: Apps Script API (`?action=bootstrap`).
+- Envío de pedidos: Cloudflare Worker.
+- Base de datos: Google Sheets.
 
-## Funciones principales
+## Archivos principales
 
-- Login por usuario.
-- Roles: vendedor, cliente, invitado y mostrador.
-- Toma de pedidos con clientes, categorías y productos.
-- Envío de pedidos por WhatsApp.
-- Historial local con reutilización de pedidos.
-- Cola de pendientes offline.
-- Consulta de lista de precios.
-- Modo Mostrador para comprobantes internos con cantidad/peso decimal.
+- `index.html`: estructura de la UI y modales.
+- `styles.css`: diseño visual.
+- `app.js`: lógica de datos, pedidos, historial, pendientes y sincronización.
+- `sw.js`: service worker para cache offline de archivos propios.
+- `manifest.json`: configuración PWA.
 
-## Rol Mostrador
+## Limpieza aplicada
 
-El rol `mostrador` muestra una entrada protagonista de Venta Mostrador y oculta el banner publicitario.
-
-La venta mostrador usa:
-
-- cliente existente o cliente ocasional, separado del pedido común;
-- categoría propia;
-- selector de productos con selección visual;
-- cantidades enteras o fraccionadas, con coma o punto;
-- cálculo local de total;
-- salida por impresión o WhatsApp.
-
-## Arquitectura
-
-Frontend estático:
-
-- `index.html`
-- `styles.css`
-- `app.js`
-- `sw.js`
-
-Backend actual para pedidos normales:
-
-- Google Apps Script
-- Google Sheets
-- Cloudflare Pages / Worker según entorno
-
-El módulo Mostrador de esta etapa trabaja en frontend y no escribe todavía en Sheets.
-
-## Notas de desarrollo
-
-- No tocar backend para Mostrador hasta definir si las ventas internas deben registrarse en hoja propia.
-- Mantener separado el estado de pedido normal y venta mostrador para evitar cruces de cliente/categoría/carrito.
-- Mantener localStorage controlado: historial limitado, pendientes offline y catálogos cacheados.
+- Eliminada la carpeta `netlify/`.
+- Eliminado `netlify.toml`.
+- Eliminadas referencias internas a Netlify.
+- Eliminada lectura vieja vía OpenSheet.
+- La app queda leyendo datos desde Apps Script mediante `BOOTSTRAP_URL`.
+- Service Worker conserva estrategia network-first para archivos propios y no intercepta requests externos.
