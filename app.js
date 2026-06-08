@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.18-dev (Cantidades fraccionadas simple)";
+const APP_VERSION = "v1.3.19-dev (Fix decimal punto/coma)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -82,7 +82,28 @@ function isMostradorD9() {
 }
 function parseDecimalD9(value) {
   if (value === null || value === undefined) return 0;
-  const s = String(value).trim().replace(/\./g, "").replace(",", ".");
+
+  let s = String(value)
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/\$/g, "");
+
+  if (!s) return 0;
+
+  const hasComma = s.includes(",");
+  const hasDot = s.includes(".");
+
+  if (hasComma && hasDot) {
+    // Formato argentino: 1.234,56
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    // Decimal con coma: 0,5
+    s = s.replace(",", ".");
+  } else {
+    // Decimal con punto: 0.5
+    // No removemos el punto, porque en cantidad es más probable que sea decimal manual.
+  }
+
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
