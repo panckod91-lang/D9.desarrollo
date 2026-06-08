@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.16-dev (Anular sobre producción + fix doble envío)";
+const APP_VERSION = "v1.3.17-dev (Anular sobre producción + fix doble envío)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2743,6 +2743,36 @@ function buildOrderFingerprint(payload) {
   ].join("||");
 }
 
+
+function getRecentOrderSendsD9() {
+  const raw = readJSON("d9_recent_order_sends", []);
+  return Array.isArray(raw) ? raw : [];
+}
+
+function cleanupRecentOrderSendsD9(ttlMs = 120000) {
+  const now = Date.now();
+  const clean = getRecentOrderSendsD9().filter(x => x && x.fp && Number(x.until || 0) > now);
+  saveJSON("d9_recent_order_sends", clean.slice(-20));
+  return clean;
+}
+
+function isRecentOrderFingerprintBlockedD9(payload, ttlMs = 120000) {
+  if (!payload) return false;
+  const fp = buildOrderFingerprint(payload);
+  const now = Date.now();
+  const recent = cleanupRecentOrderSendsD9(ttlMs);
+  return recent.some(x => x.fp === fp && Number(x.until || 0) > now);
+}
+
+function markRecentOrderFingerprintD9(payload, ttlMs = 120000) {
+  if (!payload) return;
+  const fp = buildOrderFingerprint(payload);
+  const now = Date.now();
+  const recent = cleanupRecentOrderSendsD9(ttlMs).filter(x => x.fp !== fp);
+  recent.push({ fp, at: now, until: now + ttlMs });
+  saveJSON("d9_recent_order_sends", recent.slice(-20));
+}
+
 function isOrderSendLocked(payload = null) {
   const now = Date.now();
   if (state.isSending) return true;
@@ -3535,7 +3565,16 @@ async function sendOrder() {
   const payload = buildOrderPayload();
 
   if (isOrderSendLocked(payload)) return;
-  lockOrderSend(payload, 6000);
+
+  // D9 v1.3.17: candado persistente por huella de pedido.
+  // Evita que el mismo cliente + mismos productos + mismo total se cargue dos veces
+  // si Android vuelve de WhatsApp, se repite un tap, o queda un reintento viejo dando vueltas.
+  if (isRecentOrderFingerprintBlockedD9(payload, 120000)) {
+    toast("Este mismo pedido ya se envió hace instantes. Esperá un momento para repetirlo.");
+    return;
+  }
+
+  lockOrderSend(payload, 15000);
 
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
@@ -3571,6 +3610,8 @@ async function sendOrder() {
       toast("Falta WhatsApp destino en confi.");
       return;
     }
+
+    markRecentOrderFingerprintD9(payload, 120000);
 
     trySendToWebhook(payload)
       .then(res => {
@@ -3618,7 +3659,7 @@ async function sendOrder() {
       confirmBtn.textContent = "Confirmar y enviar";
     }
 
-    releaseOrderSendLock(2200);
+    releaseOrderSendLock(5000);
   }
 }
 
@@ -3626,6 +3667,10 @@ async function sendOrder() {
 function savePendingNow() {
   if (validateOrder() !== true) return;
   const payload = buildOrderPayload();
+  if (isRecentOrderFingerprintBlockedD9(payload, 120000)) {
+    toast("Este mismo pedido ya fue enviado hace instantes. No lo guardo duplicado.");
+    return;
+  }
   savePendingPayload(payload);
   saveHistory(payload, "pendiente");
   clearDraftPedidoIdD9();
@@ -3900,7 +3945,11 @@ function restoreHistoryFromFile(ev) {
 
 
 function resetTransientUI() {
-  state.isSending = false;
+  // No liberamos el candado de envío si todavía está vigente.
+  // Al volver desde WhatsApp Android dispara pageshow/focus y antes podía habilitar doble envío.
+  if (!(state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) {
+    state.isSending = false;
+  }
   state.isSyncing = false;
   const sendBtn = $("#btnSend");
   const syncBtn = $("#btnSyncPending");
@@ -3985,7 +4034,7 @@ function closeOrderConfirmModal() {
 function confirmOrderAndSend() {
   const confirmBtn = $("#btnConfirmOrderSend");
 
-  // D9 v1.3.16:
+  // D9 v1.3.17:
   // No cerramos el modal antes de llamar sendOrder(). En Android/Chrome,
   // cerrar/cambiar DOM antes del window.open podía cortar el gesto de usuario
   // y dejar el botón sin abrir WhatsApp.
@@ -4099,7 +4148,7 @@ function bind() {
   $("#btnClearCart").addEventListener("click", clearCart);
   $("#btnSend").addEventListener("click", openOrderConfirmModal);
   $("#btnCancelOrderConfirm")?.addEventListener("click", closeOrderConfirmModal);
-  // D9 v1.3.16: confirmación vinculada por listener delegado anti-render.
+  // D9 v1.3.17: confirmación vinculada por listener delegado anti-render.
   $("#btnSavePending").addEventListener("click", savePendingNow);
   $("#btnExportHistory").addEventListener("click", exportHistory);
   $("#btnRestoreHistory")?.addEventListener("click", openRestoreHistory);
@@ -5063,5 +5112,5 @@ async function init() {
     renderNetwork();
   }
 }
-// D9 v1.3.16: Confirmar y enviar usa listener delegado y abre WhatsApp antes de cerrar modal.
+// D9 v1.3.17: Confirmar y enviar usa listener delegado y abre WhatsApp antes de cerrar modal.
 init();

@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v49-anular-fix-doble-envio";
+const CACHE_NAME = "d9-dev-cache-v50-fix-duplicado-persistente";
 const URLS = [
   "./",
   "./index.html",
