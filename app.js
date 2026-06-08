@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.19-dev (Fix decimal punto/coma)";
+const APP_VERSION = "v1.3.20-dev (PDF lista de precios)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2371,6 +2371,245 @@ function renderPriceProducts() {
   `).join("");
 }
 
+
+function getPriceListFilteredProductsD9() {
+  const term = String(state.priceSearch || "").trim().toLowerCase();
+  const cat = state.priceCategory || "";
+  return (state.products || [])
+    .filter(productHasValidPrice)
+    .filter(p => (!term || productMatchesTerm(p, term)) && (!cat || p.categoria === cat))
+    .sort((a, b) => {
+      const ca = cleanCategory(a.categoria || "");
+      const cb = cleanCategory(b.categoria || "");
+      if (!cat && ca !== cb) return ca.localeCompare(cb, "es", { sensitivity: "base", numeric: true });
+      return sortByName(a, b);
+    });
+}
+
+function pdfAsciiD9(value) {
+  return String(value ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/ñ/g, "n").replace(/Ñ/g, "N")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pdfEscD9(value) {
+  return pdfAsciiD9(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function pdfMoneyD9(value) {
+  return pdfAsciiD9(money(Number(value || 0)));
+}
+
+function pdfWrapD9(text, maxChars) {
+  const words = pdfAsciiD9(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  words.forEach(w => {
+    if (!line) { line = w; return; }
+    if ((line + " " + w).length <= maxChars) line += " " + w;
+    else { lines.push(line); line = w; }
+  });
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function pdfTextD9(txt, x, y, size = 9, font = "F1") {
+  return `BT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${pdfEscD9(txt)}) Tj ET\n`;
+}
+
+function pdfTextRightD9(txt, xRight, y, size = 9, font = "F1") {
+  const s = pdfAsciiD9(txt);
+  const approx = s.length * size * 0.48;
+  return pdfTextD9(s, xRight - approx, y, size, font);
+}
+
+function pdfLineD9(x1, y1, x2, y2) {
+  return `${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S\n`;
+}
+
+function buildPriceListPdfBlobD9(products) {
+  const pageW = 595.28;
+  const pageH = 841.89;
+  const margin = 36;
+  const topY = 742;
+  const bottomY = 54;
+  const xCode = 42;
+  const xName = 102;
+  const xPrice = 552;
+  const pages = [];
+  let page = [];
+  let y = topY;
+  let activeCategory = "";
+  const generated = new Date();
+  const fecha = generated.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+  const priceList = priceLabel(getActivePriceList ? getActivePriceList() : state.activePriceList || "lista_1");
+  const term = String(state.priceSearch || "").trim();
+  const selectedCat = state.priceCategory || "";
+  const titleExtra = selectedCat ? cleanCategory(selectedCat) : (term ? `Busqueda: ${term}` : "Lista completa");
+
+  function newPage() {
+    if (page.length) pages.push(page);
+    page = [];
+    y = topY;
+    activeCategory = "";
+  }
+
+  function need(h) {
+    if (y - h < bottomY) newPage();
+  }
+
+  function addCategory(cat) {
+    const label = cleanCategory(cat || "Sin categoria").toUpperCase();
+    need(32);
+    page.push(`0.87 0.95 0.99 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} ${(pageW-margin*2).toFixed(2)} 18 re f\n`);
+    page.push(`0.10 0.24 0.38 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} 4 18 re f\n`);
+    page.push(`0 0 0 rg ` + pdfTextD9(label, xCode + 8, y - 8, 10, "F2"));
+    y -= 24;
+    addColumns();
+  }
+
+  function addColumns() {
+    page.push(`0.10 0.24 0.38 rg ` + pdfTextD9("Cod", xCode, y, 8, "F2"));
+    page.push(pdfTextD9("Articulo", xName, y, 8, "F2"));
+    page.push(pdfTextRightD9("Precio final con IVA", xPrice, y, 8, "F2"));
+    page.push(`0.70 0.78 0.84 RG ` + pdfLineD9(margin, y - 5, pageW - margin, y - 5));
+    y -= 16;
+  }
+
+  function ensureColumnHeader() {
+    if (!page.length || activeCategory === "__need_cols__") {
+      addColumns();
+      activeCategory = "";
+    }
+  }
+
+  let sorted = products;
+  sorted.forEach(p => {
+    const cat = cleanCategory(p.categoria || "Sin categoria");
+    if (!selectedCat && cat !== activeCategory) {
+      activeCategory = cat;
+      addCategory(cat);
+    } else if (selectedCat && !page.length) {
+      addColumns();
+    }
+
+    const code = productCode(p) || "";
+    const nameLines = pdfWrapD9(p.nombre || "", 53).slice(0, 3);
+    const rowH = Math.max(15, nameLines.length * 10 + 5);
+    need(rowH + 3);
+    if (!selectedCat && activeCategory !== cat) {
+      activeCategory = cat;
+      addCategory(cat);
+    } else if (selectedCat && !page.length) {
+      addColumns();
+    }
+
+    page.push(`0 0 0 rg ` + pdfTextD9(code, xCode, y, 8));
+    nameLines.forEach((ln, i) => page.push(pdfTextD9(ln, xName, y - (i * 10), 8)));
+    page.push(pdfTextRightD9(pdfMoneyD9(productPrice(p)), xPrice, y, 8, "F2"));
+    page.push(`0.86 0.90 0.93 RG ` + pdfLineD9(margin, y - rowH + 2, pageW - margin, y - rowH + 2));
+    y -= rowH;
+  });
+
+  if (page.length) pages.push(page);
+  if (!pages.length) pages.push([pdfTextD9("Sin productos para listar.", margin, topY, 10)]);
+
+  function pageHeader(pageNum, total) {
+    let s = "";
+    s += `0.95 0.98 1 rg 28 774 539 44 re f\n`;
+    s += `0.38 0.74 0.91 RG 28 774 539 44 re S\n`;
+    s += `0.10 0.45 0.78 rg 42 786 34 22 re f\n`;
+    s += `1 1 1 rg ` + pdfTextD9("D9", 49, 793, 14, "F2");
+    s += `0.02 0.16 0.30 rg ` + pdfTextD9("DISTRIBUIDORA D9", 88, 800, 16, "F2");
+    s += `0.25 0.38 0.48 rg ` + pdfTextD9("Lista de precios - " + titleExtra, 88, 784, 9);
+    s += pdfTextRightD9("Generada: " + fecha, 552, 802, 8);
+    s += pdfTextRightD9(priceList, 552, 788, 8);
+    s += `0 0 0 rg`;
+    return s;
+  }
+
+  function pageFooter(pageNum, total) {
+    let s = "";
+    s += `0.70 0.78 0.84 RG ` + pdfLineD9(margin, 38, pageW - margin, 38);
+    s += `0.35 0.45 0.52 rg ` + pdfTextD9("Precios sujetos a modificacion sin previo aviso.", margin, 24, 7);
+    s += pdfTextRightD9(`Pagina ${pageNum} de ${total}`, pageW - margin, 24, 7);
+    return s;
+  }
+
+  const pageStreams = pages.map((body, i) => pageHeader(i + 1, pages.length) + body.join("") + pageFooter(i + 1, pages.length));
+  const objects = [];
+  function obj(content) { objects.push(content); return objects.length; }
+  const catalogId = obj("<< /Type /Catalog /Pages 2 0 R >>");
+  const pagesKids = [];
+  const pagesId = 2;
+  objects.push("");
+  const font1Id = obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+  const font2Id = obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+  pageStreams.forEach(stream => {
+    const contentId = objects.length + 2;
+    const pageId = obj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    pagesKids.push(`${pageId} 0 R`);
+    obj(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  });
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pagesKids.join(" ")}] /Count ${pagesKids.length} >>`;
+
+  let pdf = "%PDF-1.4\n% D9\n";
+  const offsets = [0];
+  objects.forEach((content, idx) => {
+    offsets.push(pdf.length);
+    pdf += `${idx + 1} 0 obj\n${content}\nendobj\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objects.length; i++) pdf += String(offsets[i]).padStart(10, "0") + " 00000 n \n";
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  const bytes = new Uint8Array(pdf.length);
+  for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
+  const filename = `D9-lista-precios-${generated.toISOString().slice(0,10)}.pdf`;
+  return { blob: new Blob([bytes], { type: "application/pdf" }), filename };
+}
+
+async function sharePriceListPdfD9() {
+  const products = getPriceListFilteredProductsD9();
+  if (!products.length) {
+    toast("No hay productos para compartir.");
+    return;
+  }
+
+  try {
+    toast("Armando PDF...");
+    const { blob, filename } = buildPriceListPdfBlobD9(products);
+    const file = new File([blob], filename, { type: "application/pdf" });
+    const shareData = {
+      title: "Lista de precios D9",
+      text: "Lista de precios actualizada de Distribuidora D9.",
+      files: [file]
+    };
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+      await navigator.share(shareData);
+      toast("Lista lista para compartir.");
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 15000);
+    toast("PDF descargado. Compartilo desde Descargas.");
+  } catch (err) {
+    console.error("No se pudo compartir PDF", err);
+    toast("No se pudo generar/compartir el PDF.");
+  }
+}
+
 function refreshPricesAcrossApp() {
   state.cart = state.cart.map(item => ({ ...item, precio: productPrice(item) }));
   renderQuickLabels();
@@ -4153,6 +4392,8 @@ function bind() {
   productSearchInputD9.addEventListener("pointerdown", () => clearProductSearchD9(true));
   productSearchInputD9.addEventListener("focus", () => clearProductSearchD9(true));
   $("#priceSearch").addEventListener("input", (e) => { state.priceSearch = e.target.value.trim().toLowerCase(); renderPriceProducts(); });
+  const sharePricePdfBtnD9 = $("#btnSharePricePdfD9");
+  if (sharePricePdfBtnD9) sharePricePdfBtnD9.addEventListener("click", sharePriceListPdfD9);
   $("#priceListSelect").addEventListener("change", (e) => { state.activePriceList = e.target.value; refreshPricesAcrossApp(); });
   const orderPriceSelect = $("#orderPriceListSelect");
   if (orderPriceSelect) orderPriceSelect.addEventListener("change", (e) => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v52-fix-decimal-punto-coma";
+const CACHE_NAME = "d9-dev-cache-v53-pdf-lista-precios";
 const URLS = [
   "./",
   "./index.html",
