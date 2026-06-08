@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v50-fix-duplicado-persistente";
+const CACHE_NAME = "d9-dev-cache-v51-cantidad-fraccionada";
 const URLS = [
   "./",
   "./index.html",

@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.17-dev (Anular sobre producción + fix doble envío)";
+const APP_VERSION = "v1.3.18-dev (Cantidades fraccionadas simple)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2466,7 +2466,7 @@ function renderProducts() {
                 <span class="qty-inline-btn-d9" data-product-qty="minus" data-id="${esc(p.id)}" role="button" tabindex="0" aria-label="Restar unidad">−</span>
                 <span class="qty-inline-btn-d9" data-product-qty="plus" data-id="${esc(p.id)}" role="button" tabindex="0" aria-label="Sumar unidad">+</span>
               </div>
-              <div class="product-line-total-d9">x${cantidad} · ${money(subtotal)}</div>
+              <div class="product-line-total-d9">x${fmtQtyD9(cantidad)} · ${money(subtotal)}</div>
             `) : `<div class="pick-state">Tocar para agregar</div>`}
           </div>
         </button>`;
@@ -2572,11 +2572,11 @@ function generateMessageText(payload = null) {
 
   source.carrito.forEach((item, index) => {
     lines.push(`${index + 1}) ${item.nombre}`);
-    lines.push(`   · Cant: ${Number(item.cantidad || 0)}`);
+    lines.push(`   · Cant: ${fmtQtyD9(item.cantidad || 0)}`);
   });
 
   lines.push("────────────────────");
-  lines.push(`Items: ${source.carrito.length} · Unidades: ${unidadesTotales}`);
+  lines.push(`Items: ${source.carrito.length} · Unidades: ${fmtQtyD9(unidadesTotales)}`);
   return lines.join("\n");
 }
 
@@ -2660,7 +2660,7 @@ function applyQtyModalD9() {
 
   const raw = String(input.value || "").trim();
   const isMostrador = state.qtyModalMode === "mostrador";
-  const qty = isMostrador ? parseDecimalD9(raw) : Math.floor(Number(raw.replace(",", ".")));
+  const qty = parseDecimalD9(raw);
 
   if (!Number.isFinite(qty) || qty < 0) {
     toast("Ingresá una cantidad válida.");
@@ -2710,14 +2710,14 @@ function renderCart() {
         </div>
         <div class="qty-row qty-row-pro-d9">
           <button class="qty-btn" data-qty="minus" data-id="${esc(item.id)}" type="button">−</button>
-          <div class="qty-value">${item.cantidad}</div>
+          <div class="qty-value">${fmtQtyD9(item.cantidad)}</div>
           <button class="qty-btn" data-qty="plus" data-id="${esc(item.id)}" type="button">+</button>
           <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">👉Cant.✏️</button>
           <div class="product-price cart-line-total-d9">${money(item.precio * item.cantidad)}</div>
         </div>
       </div>`).join("");
   }
-  $("#summaryItems").textContent = state.cart.reduce((acc, item) => acc + item.cantidad, 0);
+  $("#summaryItems").textContent = fmtQtyD9(state.cart.reduce((acc, item) => acc + Number(item.cantidad || 0), 0));
   $("#summaryTotal").textContent = money(cartTotal());
   const previewEl = $("#messagePreview");
   if (previewEl) previewEl.textContent = generateMessageText();
