@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.15-dev (Anular sobre producción + fix doble envío)";
+const APP_VERSION = "v1.3.16-dev (Anular sobre producción + fix doble envío)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3984,18 +3984,42 @@ function closeOrderConfirmModal() {
 
 function confirmOrderAndSend() {
   const confirmBtn = $("#btnConfirmOrderSend");
-  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil) || confirmBtn?.disabled) return;
+
+  // D9 v1.3.16:
+  // No cerramos el modal antes de llamar sendOrder(). En Android/Chrome,
+  // cerrar/cambiar DOM antes del window.open podía cortar el gesto de usuario
+  // y dejar el botón sin abrir WhatsApp.
+  if (state.isSending || (state.orderSendLockUntil && Date.now() < state.orderSendLockUntil)) return;
 
   if (confirmBtn) {
     confirmBtn.disabled = true;
     confirmBtn.textContent = "Enviando...";
   }
 
-  closeOrderConfirmModal();
   sendOrder();
+  window.setTimeout(closeOrderConfirmModal, 120);
+}
+
+
+function bindOrderConfirmDelegatedD9() {
+  if (window.__d9OrderConfirmDelegatedV16) return;
+  window.__d9OrderConfirmDelegatedV16 = true;
+
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest && ev.target.closest("#btnConfirmOrderSend");
+    if (!btn) return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+
+    confirmOrderAndSend();
+  }, true);
 }
 
 function bind() {
+  bindOrderConfirmDelegatedD9();
+
   // D9: bind() se llama desde init y también desde observadores/renderizados.
   // Sin este candado se acumulaban listeners y un solo tap podía enviar el pedido dos veces.
   if (window.__d9MainBindDone) return;
@@ -4075,7 +4099,7 @@ function bind() {
   $("#btnClearCart").addEventListener("click", clearCart);
   $("#btnSend").addEventListener("click", openOrderConfirmModal);
   $("#btnCancelOrderConfirm")?.addEventListener("click", closeOrderConfirmModal);
-  $("#btnConfirmOrderSend")?.addEventListener("click", confirmOrderAndSend);
+  // D9 v1.3.16: confirmación vinculada por listener delegado anti-render.
   $("#btnSavePending").addEventListener("click", savePendingNow);
   $("#btnExportHistory").addEventListener("click", exportHistory);
   $("#btnRestoreHistory")?.addEventListener("click", openRestoreHistory);
@@ -5039,6 +5063,5 @@ async function init() {
     renderNetwork();
   }
 }
-// D9 v1.3.14: se eliminó el listener global duplicado de confirmación.
-// El botón Confirmar ya se vincula una sola vez dentro de bind().
+// D9 v1.3.16: Confirmar y enviar usa listener delegado y abre WhatsApp antes de cerrar modal.
 init();
