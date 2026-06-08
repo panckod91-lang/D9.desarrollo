@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.13-dev (Anular pedido)";
+const APP_VERSION = "v1.3.15-dev (Anular sobre producción + fix doble envío)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1965,7 +1965,21 @@ function priceLabel(key) {
 
 function productPrice(product) {
   const key = getActivePriceList();
-  return parseD9Number(product?.precios?.[key] || 0);
+  let source = product;
+
+  // D9: al reutilizar desde historial el item trae id/nombre/precio,
+  // pero no trae el objeto completo con precios por lista.
+  // Si existe en catálogo, usamos el catálogo para recalcular según cliente/lista.
+  const itemId = String(product?.id || product?.id_producto || product?.producto_id || "").trim();
+  if ((!source?.precios || typeof source.precios !== "object") && itemId && Array.isArray(state.products)) {
+    source = state.products.find(p => String(p.id || "").trim() === itemId) || source;
+  }
+
+  const byList = parseD9Number(source?.precios?.[key] || 0);
+  if (byList > 0) return byList;
+
+  // Fallback defensivo: nunca pisar con 0 un precio que venía guardado en historial.
+  return parseD9Number(product?.precio || product?.price || product?.precio_unitario || 0);
 }
 
 function renderQuickLabels() {
@@ -3982,6 +3996,11 @@ function confirmOrderAndSend() {
 }
 
 function bind() {
+  // D9: bind() se llama desde init y también desde observadores/renderizados.
+  // Sin este candado se acumulaban listeners y un solo tap podía enviar el pedido dos veces.
+  if (window.__d9MainBindDone) return;
+  window.__d9MainBindDone = true;
+
   document.addEventListener("pointerdown", (ev) => {
     const target = ev.target.closest("button, .action-card-vnext, .status-pill-vnext, [data-view], [data-back]");
     if (!target) return;
@@ -5020,17 +5039,6 @@ async function init() {
     renderNetwork();
   }
 }
-document.addEventListener("click", (e) => {
-
-  // Botón EDITAR
-  if (e.target.id === "btnCancelOrderConfirm") {
-    closeOrderConfirmModal();
-  }
-
-  // Botón CONFIRMAR
-  if (e.target.id === "btnConfirmOrderSend") {
-    confirmOrderAndSend();
-  }
-
-});
+// D9 v1.3.14: se eliminó el listener global duplicado de confirmación.
+// El botón Confirmar ya se vincula una sola vez dentro de bind().
 init();
