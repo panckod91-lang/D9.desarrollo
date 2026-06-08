@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v47-id-fuerte-anticolision";
+const CACHE_NAME = "d9-dev-cache-v48-anular-pedido";
 const URLS = [
   "./",
   "./index.html",

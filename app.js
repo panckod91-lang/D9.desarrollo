@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.12-dev (ID fuerte anti-colisión)";
+const APP_VERSION = "v1.3.13-dev (Anular pedido)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3121,6 +3121,102 @@ function looksLikePedidoIdD9(value) {
   return false;
 }
 
+
+function isHistoryItemAnuladoD9(item) {
+  const estado = String(item?.estado || item?.pc_estado || "").trim().toUpperCase();
+  return estado === "ANULADO" || estado === "ANULADO_VENDEDOR" || estado.includes("ANULADO");
+}
+
+function setHistoryItemAnuladoD9(itemId, pedidoId, message = "ANULADO_VENDEDOR") {
+  const history = readJSON(STORAGE_KEYS.history, []);
+  const targetItemId = String(itemId || "").trim();
+  const targetPedidoId = String(pedidoId || "").trim();
+
+  const updated = history.map(item => {
+    const localId = String(item.id || item.pedido_id || item.pedidoId || "").trim();
+    const localPedidoId = String(item.pedido_id || item.pedidoId || "").trim();
+    const match = (targetPedidoId && localPedidoId === targetPedidoId) || (targetItemId && localId === targetItemId);
+    if (!match) return item;
+    return {
+      ...item,
+      estado: "ANULADO_VENDEDOR",
+      pc_estado: "ANULADO_VENDEDOR",
+      status: "ok",
+      pc_status: "cargado",
+      error: message || "Anulado en PC"
+    };
+  });
+
+  saveJSON(STORAGE_KEYS.history, updated);
+}
+
+function buildActionUrlD9(endpoint, action) {
+  const url = String(endpoint || "").trim();
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}action=${encodeURIComponent(action)}`;
+}
+
+async function postD9Action(action, payload = {}) {
+  if (!Array.isArray(WEBHOOK_ENDPOINTS) || !WEBHOOK_ENDPOINTS.length) {
+    return { ok: false, error: "Webhook no configurado" };
+  }
+
+  let last = null;
+  for (const endpoint of WEBHOOK_ENDPOINTS) {
+    try {
+      const result = await sendToEndpoint(buildActionUrlD9(endpoint, action), { ...payload, action });
+      if (result?.ok) return result;
+      last = result;
+    } catch (err) {
+      last = { ok: false, error: String(err), endpoint };
+    }
+  }
+  return last || { ok: false, error: "No se pudo completar la acción" };
+}
+
+async function anularHistoryPedidoD9(id) {
+  const history = readJSON(STORAGE_KEYS.history, []);
+  const item = history.find(x => String(x.id || x.pedido_id || x.pedidoId || "") === String(id));
+  if (!item) return toast("No encontré el pedido en historial.");
+
+  const pedidoId = getHistoryPedidoIdD9(item);
+  if (!pedidoId) return toast("No encontré el ID interno del pedido.");
+
+  if (isHistoryItemAnuladoD9(item)) {
+    toast("Ese pedido ya figura anulado.");
+    return;
+  }
+
+  const pcText = item.pc_status === "cargado" || item.status === "ok" ? "Cargado en PC" : "No llegó a PC";
+  if (pcText !== "Cargado en PC") {
+    toast("Solo se pueden anular pedidos cargados en PC.");
+    return;
+  }
+
+  showD9Confirm({
+    message: "¿Anular este pedido en PC?",
+    detail: "No se borra de Sheets: se marca como ANULADO_VENDEDOR y queda como registro administrativo.",
+    okText: "Anular",
+    cancelText: "Cancelar",
+    onOk: async () => {
+      const res = await postD9Action("anular_pedido", {
+        pedido_id: pedidoId,
+        vendedor_id: item.vendedor_id || state.seller?.id || "",
+        vendedor: item.vendedor || state.seller?.nombre || ""
+      });
+
+      if (!res?.ok || res?.data?.ok !== true) {
+        toast(res?.data?.error || res?.error || "No se pudo anular en PC.");
+        return;
+      }
+
+      setHistoryItemAnuladoD9(id, pedidoId, "Anulado en PC");
+      renderHistory();
+      toast(`Pedido anulado en PC (${res.data.filas || 0} filas).`);
+    }
+  });
+}
+
 function getHistoryPedidoIdD9(item) {
   const pedidoId = String(item?.pedido_id || item?.pedidoId || item?.id_pedido || "").trim();
   if (pedidoId) return pedidoId;
@@ -3644,16 +3740,22 @@ function renderHistory() {
         </div>`;
 
     const pcText = item.pc_status === "cargado" || item.status === "ok" ? "Cargado en PC" : "No llegó a PC";
+    const isAnulado = isHistoryItemAnuladoD9(item);
+    const estadoText = isAnulado ? " · ANULADO" : "";
+    const anularBtn = (pcText === "Cargado en PC" && !isAnulado)
+      ? `<button class="history-action-btn" data-anular-history="${esc(itemId)}" type="button">⛔ Anular</button>`
+      : "";
     return `
-      <div class="history-item ${isOpen ? 'is-open' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
+      <div class="history-item ${isOpen ? 'is-open' : ''} ${isAnulado ? 'history-item-anulado-d9' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
         <div class="history-head-row">
           <div class="history-copy">
             <label class="history-select-line-d9" data-no-toggle><input type="checkbox" class="history-select-d9" data-history-select="${esc(itemId)}"> <span>Seleccionar</span></label>
             <strong>${esc(item.cliente)}</strong>
             <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
-            <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${item.error ? ' · ' + esc(item.error) : ''}</div>
+            <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${estadoText}${item.error ? ' · ' + esc(item.error) : ''}</div>
             <div class="history-actions history-actions-compact-d9" data-no-toggle>
               ${pcText === "Cargado en PC" ? '' : (debugId ? `<button class="history-action-btn history-action-main-d9" data-resync-history="${esc(itemId)}" type="button">🔁 Reenviar a PC</button>` : `<button class="history-action-btn history-action-main-d9" data-manual-load-history="${esc(itemId)}" type="button">📝 Cargar manual</button>`)}
+              ${anularBtn}
               <button class="history-action-btn" data-reuse-history="${esc(itemId)}" type="button">↻ Reutilizar</button>
               <button class="history-delete-btn" data-delete-history="${esc(itemId)}" type="button" aria-label="Borrar pedido del historial">🗑️</button>
             </div>
@@ -4093,6 +4195,13 @@ function bind() {
     if (reuseHistory) {
       ev.stopPropagation();
       reuseHistoryItem(reuseHistory.dataset.reuseHistory);
+      return;
+    }
+
+    const anularHistory = ev.target.closest("[data-anular-history]");
+    if (anularHistory) {
+      ev.stopPropagation();
+      anularHistoryPedidoD9(anularHistory.dataset.anularHistory);
       return;
     }
 
