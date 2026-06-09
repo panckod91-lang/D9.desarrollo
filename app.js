@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.26-dev (PDF titulo busqueda)";
+const APP_VERSION = "v1.3.27-dev (PDF sin solapado categorias)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2537,9 +2537,10 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   function addCategoryHeader(cat, repeated = false) {
     const label = cleanCategory(cat || "Sin categoria").toUpperCase() + (repeated ? " (CONT.)" : "");
     ensureSpace(headerH + columnsH + rowMinH);
-    page.push(`0.87 0.95 0.99 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} ${(pageW-margin*2).toFixed(2)} 18 re f\n`);
-    page.push(`0.10 0.45 0.78 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} 4 18 re f\n`);
-    page.push(`0.02 0.16 0.30 rg ` + pdfTextD9(label, xCode + 8, y - 8, 10, "F2"));
+    const catBarY = y - 18;
+    page.push(`0.87 0.95 0.99 rg ${margin.toFixed(2)} ${catBarY.toFixed(2)} ${(pageW-margin*2).toFixed(2)} 18 re f\n`);
+    page.push(`0.10 0.45 0.78 rg ${margin.toFixed(2)} ${catBarY.toFixed(2)} 4 18 re f\n`);
+    page.push(`0.02 0.16 0.30 rg ` + pdfTextD9(label, xCode + 8, y - 13, 10, "F2"));
     y -= headerH;
     addColumns();
     rowIndex = 0;
