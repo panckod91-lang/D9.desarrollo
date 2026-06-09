@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.34-dev (home pendientes pulido)";
+const APP_VERSION = "v1.3.35-dev (logs vendedor)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -15,7 +15,9 @@ const STORAGE_KEYS = {
   pending: "d9_pendientes",
   drafts: "d9_borradores_en_espera",
   guestClient: "d9_invitado_cliente",
-  versionLogged: "d9_version_logged"
+  versionLogged: "d9_version_logged",
+  logsQueue: "d9_app_logs_queue",
+  deviceId: "d9_device_id"
 };
 let d9DeferredInstallPrompt = null;
 let d9InstallPromptReady = false;
@@ -191,6 +193,169 @@ function getVersionDateD9() {
     hour12: false
   });
 }
+
+
+const D9_LOG_MAX_QUEUE = 120;
+const D9_LOG_DETAIL_MAX = 420;
+const D9_SESSION_ID = `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+let d9LogsFlushRunning = false;
+
+function makeClientDeviceIdD9() {
+  const rnd = Math.random().toString(36).slice(2, 10).toUpperCase();
+  return `dev_${Date.now().toString(36).toUpperCase()}_${rnd}`;
+}
+
+function getDeviceIdD9() {
+  let id = localStorage.getItem(STORAGE_KEYS.deviceId);
+  if (!id) {
+    id = makeClientDeviceIdD9();
+    localStorage.setItem(STORAGE_KEYS.deviceId, id);
+  }
+  return id;
+}
+
+function shortLogDetailD9(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.slice(0, D9_LOG_DETAIL_MAX);
+  try {
+    return JSON.stringify(value).slice(0, D9_LOG_DETAIL_MAX);
+  } catch (_) {
+    return String(value).slice(0, D9_LOG_DETAIL_MAX);
+  }
+}
+
+function pedidoClienteLogD9(payloadOrData) {
+  const c = payloadOrData?.cliente || {};
+  return c.nombre_real || c.nombre || payloadOrData?.cliente_nombre || payloadOrData?.clienteName || "";
+}
+
+function safePedidoFingerprintD9(payload) {
+  try {
+    if (!payload) return "";
+    return buildOrderFingerprint(payload);
+  } catch (_) {
+    return "";
+  }
+}
+
+function buildAppLogPayloadD9(evento, data = {}) {
+  const payload = data.payload || data.pedido || data.order || null;
+  const vendedorObj = payload?.vendedor || {};
+  const seller = state.seller || {};
+  const vendedorId = String(data.vendedor_id || vendedorObj.id || seller.id || "").trim();
+  const vendedor = String(data.vendedor || vendedorObj.nombre || seller.nombre || "").trim();
+  const pedidoId = String(data.pedido_id || data.pedidoId || payload?.pedido_id || payload?.pedidoId || "").trim();
+  const cliente = String(data.cliente || pedidoClienteLogD9(payload) || "").trim();
+  const totalRaw = data.total ?? payload?.total ?? "";
+  const total = totalRaw === "" || totalRaw === null || typeof totalRaw === "undefined" ? "" : Number(totalRaw) || 0;
+
+  return {
+    action: "log_evento",
+    fecha_local: getVersionDateD9(),
+    vendedor_id: vendedorId,
+    vendedor,
+    device_id: getDeviceIdD9(),
+    session_id: D9_SESSION_ID,
+    app_version: APP_VERSION,
+    evento: String(evento || "EVENTO").trim().toUpperCase(),
+    pedido_id: pedidoId,
+    cliente,
+    total,
+    fingerprint: String(data.fingerprint || safePedidoFingerprintD9(payload) || "").slice(0, 280),
+    online: navigator.onLine ? "si" : "no",
+    resultado: String(data.resultado || data.status || "").slice(0, 80),
+    detalle: shortLogDetailD9(data.detalle ?? data.detail ?? data.error ?? "")
+  };
+}
+
+function getQueuedLogsD9() {
+  const rows = readJSON(STORAGE_KEYS.logsQueue, []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+function saveQueuedLogsD9(rows) {
+  saveJSON(STORAGE_KEYS.logsQueue, Array.isArray(rows) ? rows.slice(-D9_LOG_MAX_QUEUE) : []);
+}
+
+function enqueueAppLogD9(payload) {
+  const queue = getQueuedLogsD9();
+  queue.push(payload);
+  saveQueuedLogsD9(queue);
+}
+
+async function postAppLogPayloadD9(payload) {
+  const apiBase = getApiBaseD9();
+  const body = JSON.stringify(payload);
+
+  async function tryPost(options) {
+    const r = await fetch(`${apiBase}?action=log_evento`, {
+      method: "POST",
+      cache: "no-store",
+      redirect: "follow",
+      ...options
+    });
+    const text = await r.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      throw new Error("Respuesta no JSON del log: " + text.slice(0, 160));
+    }
+    if (data?.ok === true) return data;
+    throw new Error(data?.error || text.slice(0, 160) || "log_evento no confirmado");
+  }
+
+  try {
+    return await tryPost({
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body
+    });
+  } catch (firstErr) {
+    return await tryPost({
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" },
+      body: "payload=" + encodeURIComponent(body)
+    });
+  }
+}
+
+function logAppEventD9(evento, data = {}) {
+  const payload = buildAppLogPayloadD9(evento, data);
+  if (!navigator.onLine) {
+    enqueueAppLogD9(payload);
+    return;
+  }
+
+  postAppLogPayloadD9(payload)
+    .then(() => {
+      if (getQueuedLogsD9().length) flushAppLogsD9();
+    })
+    .catch(err => {
+      console.warn("[D9] log_evento quedó en cola:", evento, err);
+      enqueueAppLogD9(payload);
+    });
+}
+
+async function flushAppLogsD9() {
+  if (d9LogsFlushRunning || !navigator.onLine) return;
+  const queue = getQueuedLogsD9();
+  if (!queue.length) return;
+
+  d9LogsFlushRunning = true;
+  const remaining = [];
+  try {
+    for (const row of queue) {
+      try {
+        await postAppLogPayloadD9(row);
+      } catch (err) {
+        remaining.push(row);
+      }
+    }
+    saveQueuedLogsD9(remaining);
+  } finally {
+    d9LogsFlushRunning = false;
+  }
+}
+
 
 async function postVersionLogD9(payload) {
   const apiBase = getApiBaseD9();
@@ -3808,11 +3973,13 @@ async function anularHistoryPedidoD9(id) {
       });
 
       if (!res?.ok || res?.data?.ok !== true) {
+        logAppEventD9("PEDIDO_ANULADO_ERROR", { pedido_id: pedidoId, cliente: item.cliente, total: item.total, resultado: "error", error: res?.data?.error || res?.error || "No se pudo anular en PC" });
         toast(res?.data?.error || res?.error || "No se pudo anular en PC.");
         return;
       }
 
       setHistoryItemAnuladoD9(id, pedidoId, "Anulado en PC");
+      logAppEventD9("PEDIDO_ANULADO", { pedido_id: pedidoId, cliente: item.cliente, total: item.total, resultado: "ok", detalle: `${res.data.filas || 0} filas` });
       renderHistory();
       toast(`Pedido anulado en PC (${res.data.filas || 0} filas).`);
     }
@@ -3952,6 +4119,7 @@ async function manualLoadHistoryItemsToPcD9(ids) {
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
+        logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: res?.data?.duplicated ? "duplicado_ok" : "ok" });
         updateHistoryItemByLocalIdD9(localId, {
           pedido_id: payload.pedido_id,
           vendedor_id: payload.vendedor?.id || item.vendedor_id || "",
@@ -3961,6 +4129,7 @@ async function manualLoadHistoryItemsToPcD9(ids) {
         });
       } else {
         fail++;
+        logAppEventD9("REENVIO_HISTORIAL_ERROR", { payload, resultado: "error", error: res?.error || "No llegó a PC" });
         updateHistoryItemByLocalIdD9(localId, {
           pedido_id: payload.pedido_id,
           vendedor_id: payload.vendedor?.id || item.vendedor_id || "",
@@ -4091,6 +4260,7 @@ async function resyncHistoryItemsToPcD9(ids) {
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
+        logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: res?.data?.duplicated ? "duplicado_ok" : "ok" });
         updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Reenviado a PC");
       } else {
         fail++;
@@ -4121,13 +4291,18 @@ async function sendOrder() {
   if (validateOrder() !== true) return;
 
   const payload = buildOrderPayload();
+  logAppEventD9("CONFIRMAR_ENVIO_TOCADO", { payload, resultado: "tap" });
 
-  if (isOrderSendLocked(payload)) return;
+  if (isOrderSendLocked(payload)) {
+    logAppEventD9("ENVIO_BLOQUEADO_LOCK", { payload, resultado: "bloqueado", detalle: "isOrderSendLocked" });
+    return;
+  }
 
   // D9 v1.3.17: candado persistente por huella de pedido.
   // Evita que el mismo cliente + mismos productos + mismo total se cargue dos veces
   // si Android vuelve de WhatsApp, se repite un tap, o queda un reintento viejo dando vueltas.
   if (isRecentOrderFingerprintBlockedD9(payload, 120000)) {
+    logAppEventD9("ANTI_DUPLICADO_BLOQUEO", { payload, resultado: "bloqueado", detalle: "fingerprint reciente" });
     toast("Este mismo pedido ya se envió hace instantes. Esperá un momento para repetirlo.");
     return;
   }
@@ -4156,6 +4331,7 @@ async function sendOrder() {
 
     if (!navigator.onLine) {
       savePendingPayload(payload);
+      logAppEventD9("PENDIENTE_CREADO", { payload, resultado: "sin_conexion", detalle: "Modo offline al enviar" });
       saveHistory(payload, "pendiente", "Sin conexión");
       clearDraftPedidoIdD9();
       renderPendingBadge();
@@ -4165,16 +4341,19 @@ async function sendOrder() {
     }
 
     if (!openWhatsApp(waPhone, waText)) {
+      logAppEventD9("WHATSAPP_ERROR", { payload, resultado: "error", detalle: "Falta WhatsApp destino" });
       toast("Falta WhatsApp destino en confi.");
       return;
     }
 
+    logAppEventD9("WHATSAPP_ABIERTO", { payload, resultado: "ok", detalle: waPhone ? `destino:${waPhone}` : "sin destino" });
     markRecentOrderFingerprintD9(payload, 120000);
 
     trySendToWebhook(payload)
       .then(res => {
         if (!res || !res.ok) {
           savePendingPayload(payload);
+          logAppEventD9("PEDIDO_ENVIADO_SHEETS_ERROR", { payload, resultado: "pendiente", error: res?.error || "No pude confirmar el envío" });
           saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
           // IMPORTANTE: el pedido ya salió por WhatsApp y quedó guardado con su ID.
           // Limpiamos el borrador para que el próximo pedido NO reutilice el mismo ID.
@@ -4182,6 +4361,7 @@ async function sendOrder() {
           renderPendingBadge();
           console.warn("Pedido pendiente:", res?.error);
         } else {
+          logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: res?.data?.duplicated ? "duplicado_ok" : "ok", detalle: res?.data?.message || "Enviado correctamente" });
           saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
           clearDraftPedidoIdD9();
           renderPendingBadge();
@@ -4189,6 +4369,7 @@ async function sendOrder() {
       })
       .catch(err => {
         savePendingPayload(payload);
+        logAppEventD9("PEDIDO_ENVIADO_SHEETS_ERROR", { payload, resultado: "catch", error: String(err) });
         saveHistory(payload, "pendiente", String(err));
         // También en error total: el próximo pedido debe nacer con ID nuevo.
         clearDraftPedidoIdD9();
@@ -4257,6 +4438,7 @@ function saveDraftNowD9() {
   const drafts = getDraftsD9().filter(x => x && x.draft_id !== draft.draft_id);
   drafts.unshift(draft);
   saveDraftsD9(drafts);
+  logAppEventD9("GUARDAR_BORRADOR", { payload, pedido_id: draft.draft_id, resultado: "ok", detalle: `items:${(draft.carrito || []).length}` });
 
   // El borrador NO es pedido enviado y NO debe arrastrar el mismo ID al próximo pedido.
   clearDraftPedidoIdD9();
@@ -4347,6 +4529,7 @@ function continueDraftD9(draftId) {
   const drafts = getDraftsD9();
   const draft = drafts.find(x => x && x.draft_id === draftId);
   if (!draft) return toast("No encontré ese borrador.");
+  logAppEventD9("RECUPERAR_BORRADOR", { payload: draft, pedido_id: draftId, resultado: "ok", detalle: "Continuar borrador" });
 
   state.selectedClient = draft.cliente || null;
   state.activePriceList = draft.activePriceList || state.selectedClient?.lista_1 || state.activePriceList || "lista_1";
@@ -4388,6 +4571,7 @@ function deleteDraftD9(draftId) {
     onOk: () => {
       const drafts = getDraftsD9().filter(x => x && x.draft_id !== draftId);
       saveDraftsD9(drafts);
+      logAppEventD9("BORRADOR_ELIMINADO", { pedido_id: draftId, resultado: "ok" });
       renderPendingAndDraftsD9();
       renderPendingBadge();
       toast("Borrador eliminado.");
@@ -4406,6 +4590,7 @@ async function syncPending() {
   }
 
   state.isSyncing = true;
+  logAppEventD9("SYNC_PENDIENTES_INICIADA", { resultado: "inicio", detalle: `pendientes:${pending.length}` });
   const syncBtn = $("#btnSyncPending");
   const syncBtnIsButton = syncBtn?.tagName === "BUTTON";
   if (syncBtnIsButton) {
@@ -4423,12 +4608,15 @@ async function syncPending() {
         const result = await trySendToWebhook(item);
         if (result.ok) {
           sentCount++;
+          logAppEventD9("PENDIENTE_SYNC_OK", { payload: item, resultado: result?.data?.duplicated ? "duplicado_ok" : "ok" });
           updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", result?.data?.duplicated ? "Ya estaba cargado en PC" : "Cargado en PC");
         } else {
+          logAppEventD9("PENDIENTE_SYNC_ERROR", { payload: item, resultado: "error", error: result?.error || "No llegó a PC" });
           updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "pendiente", result?.error || "No llegó a PC");
           remaining.push(item);
         }
       } catch (err) {
+        logAppEventD9("PENDIENTE_SYNC_ERROR", { payload: item, resultado: "catch", error: String(err) });
         updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "pendiente", String(err));
         remaining.push(item);
       }
@@ -4550,6 +4738,7 @@ function reuseHistoryItem(id) {
     precio: Number(x.precio || 0)
   }));
 
+  logAppEventD9("PEDIDO_REUTILIZADO", { pedido_id: getHistoryPedidoIdD9(item), cliente: item.cliente, total: item.total, resultado: "ok", detalle: `items:${(item.items || []).length}` });
   renderCart();
   showView("order");
   toast("Pedido reutilizado.");
@@ -5770,12 +5959,17 @@ async function refreshDataInBackgroundD9(reason = "auto") {
     checkAppVersionD9();
 
     lastAutoRefreshAtD9 = Date.now();
-    if (isManual) toast("Datos sincronizados.");
+    if (isManual) {
+      toast("Datos sincronizados.");
+      logAppEventD9("SYNC_OK", { resultado: "ok", detalle: reason });
+      flushAppLogsD9();
+    }
     console.log(`[D9] Datos actualizados automáticamente (${reason}).`);
     return true;
   } catch (err) {
     console.warn(`[D9] No se pudo actualizar automáticamente (${reason}):`, err);
     if (isManual) toast("No se pudo sincronizar.");
+    logAppEventD9("SYNC_ERROR", { resultado: "error", detalle: reason, error: String(err) });
     return false;
   } finally {
     if (isManual) setSyncChipBusyD9(false);
@@ -5803,6 +5997,8 @@ function setupAutoRefreshD9() {
 
 async function init() {
   setupInstallPromptD9();
+  window.addEventListener("online", () => { logAppEventD9("APP_ONLINE", { resultado: "online" }); flushAppLogsD9(); syncPending(); });
+  window.addEventListener("offline", () => logAppEventD9("APP_OFFLINE", { resultado: "offline" }));
   enableTickerTouchD9();
   injectOrderConfirmStylesD9();
   injectPriceListCleanStickyD9();
@@ -5816,6 +6012,9 @@ async function init() {
   hydrateSeller();
   renderAll();
   renderNetwork();
+  logAppEventD9("APP_ABIERTA", { resultado: "init" });
+  logAppEventD9("VERSION_CARGADA", { resultado: "ok", detalle: APP_VERSION });
+  flushAppLogsD9();
   await registerServiceWorker();
   setupAutoRefreshD9();
 
@@ -5825,6 +6024,7 @@ async function init() {
 
   try {
     await loadAllData();
+    logAppEventD9("BOOTSTRAP_OK", { resultado: "ok", detalle: `productos:${state.products.length} clientes:${state.clients.length}` });
     await registerAppVersionD9();
     persistCacheState();
     hydrateGuestClient();
@@ -5838,6 +6038,7 @@ async function init() {
     checkAppVersionD9();
     syncPending();
   } catch (error) {
+    logAppEventD9("BOOTSTRAP_ERROR", { resultado: "error", error: String(error) });
     console.error(error);
     if (!state.products.length && !state.clients.length) {
       toast("No pude cargar los datos.");
