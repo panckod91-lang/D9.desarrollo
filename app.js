@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.23-dev (PDF lista pulido final)";
+const APP_VERSION = "v1.3.24-dev (PDF lista optimizada)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2439,20 +2439,34 @@ async function loadPdfLogoJpegD9() {
       image.onerror = reject;
       image.src = src;
     });
+
+    function makeJpeg(size, alpha = 1, quality = 0.88) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, size, size);
+      const scale = Math.min(size / img.width, size / img.height) * 0.92;
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      ctx.globalAlpha = 1;
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      return atob(dataUrl.split(",")[1] || "");
+    }
+
     const size = 160;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, size, size);
-    const scale = Math.min(size / img.width, size / img.height) * 0.92;
-    const w = img.width * scale;
-    const h = img.height * scale;
-    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-    const bin = atob(dataUrl.split(",")[1] || "");
-    return { data: bin, width: size, height: size };
+    const watermarkSize = 520;
+    return {
+      data: makeJpeg(size, 1, 0.88),
+      width: size,
+      height: size,
+      watermarkData: makeJpeg(watermarkSize, 0.08, 0.82),
+      watermarkWidth: watermarkSize,
+      watermarkHeight: watermarkSize
+    };
   } catch (err) {
     console.warn("No se pudo cargar logo real para PDF:", err);
     return null;
@@ -2573,17 +2587,8 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   }
 
   const groups = groupProducts(products);
-  groups.forEach(group => {
-    if (!group.items.length) return;
 
-    // Regla reportes D9:
-    // Si el principio de una categoria no entra entero en lo que queda de la pagina,
-    // la categoria arranca en pagina nueva aunque despues sea grande y continue.
-    const fullH = categoryHeight(group);
-    if (page.length && remainingH() < fullH) {
-      newPage();
-    }
-
+  function renderCategoryGroup(group) {
     addCategoryHeader(group.cat, false);
     for (let i = 0; i < group.items.length; i++) {
       if (!addRow(group.items[i])) {
@@ -2591,12 +2596,45 @@ function buildPriceListPdfBlobD9(products, logoImage) {
         addRow(group.items[i]);
       }
     }
-  });
+  }
+
+  const pendingGroups = groups.filter(g => g.items && g.items.length);
+  while (pendingGroups.length) {
+    const group = pendingGroups[0];
+    const fullH = categoryHeight(group);
+    const isHuge = fullH > pageBodyH;
+
+    if (!selectedCat && page.length && !isHuge && remainingH() < fullH) {
+      const fillerIndex = pendingGroups.findIndex((g, idx) => {
+        if (idx === 0) return false;
+        const h = categoryHeight(g);
+        return h <= pageBodyH && h <= remainingH();
+      });
+
+      if (fillerIndex > 0) {
+        const [filler] = pendingGroups.splice(fillerIndex, 1);
+        renderCategoryGroup(filler);
+        continue;
+      }
+
+      newPage();
+      continue;
+    }
+
+    if (page.length && isHuge) {
+      newPage();
+    }
+
+    pendingGroups.shift();
+    renderCategoryGroup(group);
+  }
+
 
   if (page.length) pages.push(page);
   if (!pages.length) pages.push([pdfTextD9("Sin productos para listar.", margin, topY, 10)]);
 
   let logoImageId = null;
+  let logoWatermarkImageId = null;
 
   function pageHeader(pageNum, total) {
     let s = "";
@@ -2617,11 +2655,17 @@ function buildPriceListPdfBlobD9(products, logoImage) {
 
   function pageWatermark() {
     let s = "";
-    // Marca de agua textual ultra clara. Evita alpha/transparencias para máxima compatibilidad móvil.
-    s += `0.94 0.98 1 rg ` + pdfTextD9("D9", 214, 392, 148, "F2");
-    s += `0 0 0 rg `;
+    if (logoWatermarkImageId) {
+      // Logo real gigante, preaclarado en canvas para compatibilidad entre visores PDF.
+      s += `q 330 0 0 330 132 250 cm /ImLogoW Do Q
+`;
+    } else {
+      s += `0.94 0.98 1 rg ` + pdfTextD9("D9", 214, 392, 148, "F2");
+      s += `0 0 0 rg `;
+    }
     return s;
   }
+
 
   function pageFooter(pageNum, total) {
     let s = "";
@@ -2643,11 +2687,17 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   if (logoImage && logoImage.data) {
     logoImageId = obj(`<< /Type /XObject /Subtype /Image /Width ${Number(logoImage.width || 160)} /Height ${Number(logoImage.height || 160)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoImage.data.length} >>\nstream\n${logoImage.data}\nendstream`);
   }
+  if (logoImage && logoImage.watermarkData) {
+    logoWatermarkImageId = obj(`<< /Type /XObject /Subtype /Image /Width ${Number(logoImage.watermarkWidth || 520)} /Height ${Number(logoImage.watermarkHeight || 520)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoImage.watermarkData.length} >>\nstream\n${logoImage.watermarkData}\nendstream`);
+  }
 
   const pageStreams = pages.map((body, i) => pageHeader(i + 1, pages.length) + pageWatermark() + body.join("") + pageFooter(i + 1, pages.length));
   pageStreams.forEach(stream => {
     const contentId = objects.length + 2;
-    const xObjects = logoImageId ? `/XObject << /ImLogo ${logoImageId} 0 R >>` : "";
+    const xObjectEntries = [];
+    if (logoImageId) xObjectEntries.push(`/ImLogo ${logoImageId} 0 R`);
+    if (logoWatermarkImageId) xObjectEntries.push(`/ImLogoW ${logoWatermarkImageId} 0 R`);
+    const xObjects = xObjectEntries.length ? `/XObject << ${xObjectEntries.join(" ")} >>` : "";
     const pageId = obj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /ProcSet [/PDF /Text /ImageC] /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> ${xObjects} >> /Contents ${contentId} 0 R >>`);
     pagesKids.push(`${pageId} 0 R`);
     obj(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
