@@ -1,10 +1,14 @@
-const CACHE_NAME = "d9-dev-cache-v61-pdf-categorias-columnas-ok";
+const CACHE_NAME = "d9-dev-cache-v62-manifest-d9-dev";
 const URLS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./manifest.json",
+  "./manifest.json?v=dev-d9-v2",
+  "./icons/d9-dev-icon-192-v2.png",
+  "./icons/d9-dev-icon-512-v2.png",
+  "./icons/d9-dev-maskable-512-v2.png",
+  "./icons/d9-dev-logo-v2.png",
   "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
