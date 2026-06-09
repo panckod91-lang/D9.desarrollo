@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.21-dev (PDF lista visual mejorada)";
+const APP_VERSION = "v1.3.22-dev (PDF lista paginacion inteligente)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2442,7 +2442,6 @@ function buildPriceListPdfBlobD9(products) {
   const pages = [];
   let page = [];
   let y = topY;
-  let activeCategory = "";
   let rowIndex = 0;
   const generated = new Date();
   const fecha = generated.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
@@ -2450,25 +2449,49 @@ function buildPriceListPdfBlobD9(products) {
   const term = String(state.priceSearch || "").trim();
   const selectedCat = state.priceCategory || "";
   const titleExtra = selectedCat ? cleanCategory(selectedCat) : (term ? `Busqueda: ${term}` : "Lista completa");
+  const maxNameChars = 54;
+  const rowLineH = 9;
+  const rowMinH = 15;
+  const rowPadTop = 4;
+  const rowPadBottom = 4;
+  const headerH = 24;
+  const columnsH = 16;
+  const pageBodyH = topY - bottomY;
 
   function newPage() {
     if (page.length) pages.push(page);
     page = [];
     y = topY;
-    activeCategory = "";
+    rowIndex = 0;
   }
 
-  function need(h) {
-    if (y - h < bottomY) newPage();
+  function remainingH() {
+    return y - bottomY;
   }
 
-  function addCategory(cat) {
-    const label = cleanCategory(cat || "Sin categoria").toUpperCase();
-    need(34);
+  function ensureSpace(h) {
+    if (remainingH() < h && page.length) newPage();
+  }
+
+  function rowInfo(p) {
+    const nameLines = pdfWrapD9(p.nombre || "", maxNameChars).slice(0, 3);
+    const rowH = Math.max(rowMinH, nameLines.length * rowLineH + rowPadTop + rowPadBottom);
+    return { nameLines, rowH };
+  }
+
+  function categoryHeight(group) {
+    return headerH + columnsH + group.items.reduce((sum, p) => sum + rowInfo(p).rowH, 0);
+  }
+
+  function addCategoryHeader(cat, repeated = false) {
+    const label = cleanCategory(cat || "Sin categoria").toUpperCase() + (repeated ? " (CONT.)" : "");
+    ensureSpace(headerH + columnsH + rowMinH);
     page.push(`0.87 0.95 0.99 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} ${(pageW-margin*2).toFixed(2)} 18 re f\n`);
-    page.push(`0.02 0.16 0.30 rg ` + pdfTextD9(label, xCode + 6, y - 8, 10, "F2"));
-    y -= 24;
+    page.push(`0.10 0.45 0.78 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} 4 18 re f\n`);
+    page.push(`0.02 0.16 0.30 rg ` + pdfTextD9(label, xCode + 8, y - 8, 10, "F2"));
+    y -= headerH;
     addColumns();
+    rowIndex = 0;
   }
 
   function addColumns() {
@@ -2476,44 +2499,68 @@ function buildPriceListPdfBlobD9(products) {
     page.push(pdfTextD9("Articulo", xName, y, 8, "F2"));
     page.push(pdfTextRightD9("Precio final con IVA", xPrice, y, 8, "F2"));
     page.push(`0.70 0.78 0.84 RG ` + pdfLineD9(margin, y - 5, pageW - margin, y - 5));
-    y -= 16;
+    y -= columnsH;
   }
 
-  let sorted = products;
-  sorted.forEach(p => {
-    const cat = cleanCategory(p.categoria || "Sin categoria");
-    if (!selectedCat && cat !== activeCategory) {
-      activeCategory = cat;
-      addCategory(cat);
-      rowIndex = 0;
-    } else if (selectedCat && !page.length) {
-      addColumns();
-      rowIndex = 0;
+  function addRow(p) {
+    const { nameLines, rowH } = rowInfo(p);
+    if (remainingH() < rowH) {
+      newPage();
+      return false;
+    }
+
+    const rowTop = y + 4;
+    const rowBottom = y - rowH + 4;
+    if (rowIndex % 2 === 0) {
+      page.push(`0.965 0.972 0.982 rg ${margin.toFixed(2)} ${rowBottom.toFixed(2)} ${(pageW-margin*2).toFixed(2)} ${rowH.toFixed(2)} re f\n`);
     }
 
     const code = productCode(p) || "";
-    const nameLines = pdfWrapD9(p.nombre || "", 53).slice(0, 3);
-    const rowH = Math.max(15, nameLines.length * 10 + 5);
-    need(rowH + 3);
-    if (!selectedCat && activeCategory !== cat) {
-      activeCategory = cat;
-      addCategory(cat);
-      rowIndex = 0;
-    } else if (selectedCat && !page.length) {
-      addColumns();
-      rowIndex = 0;
-    }
-
-    if (rowIndex % 2 === 0) {
-      page.push(`0.96 0.97 0.98 rg ${margin.toFixed(2)} ${(y-rowH+4).toFixed(2)} ${(pageW-margin*2).toFixed(2)} ${rowH.toFixed(2)} re f\n`);
-    }
-
-    page.push(`0 0 0 rg ` + pdfTextD9(code, xCode, y, 8));
-    nameLines.forEach((ln, i) => page.push(pdfTextD9(ln, xName, y - (i * 10), 8)));
-    page.push(pdfTextRightD9(pdfMoneyD9(productPrice(p)), xPrice, y, 8, "F2"));
-    page.push(`0.86 0.90 0.93 RG ` + pdfLineD9(margin, y - rowH + 2, pageW - margin, y - rowH + 2));
+    const baseY = y - 2;
+    page.push(`0 0 0 rg ` + pdfTextD9(code, xCode, baseY, 8));
+    nameLines.forEach((ln, i) => page.push(pdfTextD9(ln, xName, baseY - (i * rowLineH), 8)));
+    page.push(pdfTextRightD9(pdfMoneyD9(productPrice(p)), xPrice, baseY, 8, "F2"));
+    page.push(`0.86 0.90 0.93 RG ` + pdfLineD9(margin, rowBottom, pageW - margin, rowBottom));
     y -= rowH;
     rowIndex++;
+    return true;
+  }
+
+  function groupProducts(list) {
+    if (selectedCat) {
+      return [{ cat: cleanCategory(selectedCat || list[0]?.categoria || "Sin categoria"), items: list }];
+    }
+    const groups = [];
+    let current = null;
+    list.forEach(p => {
+      const cat = cleanCategory(p.categoria || "Sin categoria");
+      if (!current || current.cat !== cat) {
+        current = { cat, items: [] };
+        groups.push(current);
+      }
+      current.items.push(p);
+    });
+    return groups;
+  }
+
+  const groups = groupProducts(products);
+  groups.forEach(group => {
+    if (!group.items.length) return;
+
+    // Si la categoria completa entra en una pagina, no la cortamos: saltamos entera.
+    const fullH = categoryHeight(group);
+    if (fullH <= pageBodyH && remainingH() < fullH && page.length) {
+      newPage();
+    }
+
+    addCategoryHeader(group.cat, false);
+    for (let i = 0; i < group.items.length; i++) {
+      if (!addRow(group.items[i])) {
+        // Categoria grande: inevitable cortarla, pero repetimos titulo y columnas en la pagina nueva.
+        addCategoryHeader(group.cat, true);
+        addRow(group.items[i]);
+      }
+    }
   });
 
   if (page.length) pages.push(page);
@@ -2581,6 +2628,7 @@ function buildPriceListPdfBlobD9(products) {
   const filename = `D9-lista-precios-${generated.toISOString().slice(0,10)}.pdf`;
   return { blob: new Blob([bytes], { type: "application/pdf" }), filename };
 }
+
 async function sharePriceListPdfD9() {
   const products = getPriceListFilteredProductsD9();
   if (!products.length) {
