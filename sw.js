@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v53-pdf-lista-precios";
+const CACHE_NAME = "d9-dev-cache-v54-pdf-lista-mejorada";
 const URLS = [
   "./",
   "./index.html",

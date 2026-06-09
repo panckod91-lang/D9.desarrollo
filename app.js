@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.20-dev (PDF lista de precios)";
+const APP_VERSION = "v1.3.21-dev (PDF lista visual mejorada)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2443,9 +2443,10 @@ function buildPriceListPdfBlobD9(products) {
   let page = [];
   let y = topY;
   let activeCategory = "";
+  let rowIndex = 0;
   const generated = new Date();
   const fecha = generated.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
-  const priceList = priceLabel(getActivePriceList ? getActivePriceList() : state.activePriceList || "lista_1");
+  const enviadaPor = pdfAsciiD9(state.seller?.nombre || state.seller?.usuario || "D9");
   const term = String(state.priceSearch || "").trim();
   const selectedCat = state.priceCategory || "";
   const titleExtra = selectedCat ? cleanCategory(selectedCat) : (term ? `Busqueda: ${term}` : "Lista completa");
@@ -2463,10 +2464,9 @@ function buildPriceListPdfBlobD9(products) {
 
   function addCategory(cat) {
     const label = cleanCategory(cat || "Sin categoria").toUpperCase();
-    need(32);
+    need(34);
     page.push(`0.87 0.95 0.99 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} ${(pageW-margin*2).toFixed(2)} 18 re f\n`);
-    page.push(`0.10 0.24 0.38 rg ${margin.toFixed(2)} ${(y-13).toFixed(2)} 4 18 re f\n`);
-    page.push(`0 0 0 rg ` + pdfTextD9(label, xCode + 8, y - 8, 10, "F2"));
+    page.push(`0.02 0.16 0.30 rg ` + pdfTextD9(label, xCode + 6, y - 8, 10, "F2"));
     y -= 24;
     addColumns();
   }
@@ -2479,21 +2479,16 @@ function buildPriceListPdfBlobD9(products) {
     y -= 16;
   }
 
-  function ensureColumnHeader() {
-    if (!page.length || activeCategory === "__need_cols__") {
-      addColumns();
-      activeCategory = "";
-    }
-  }
-
   let sorted = products;
   sorted.forEach(p => {
     const cat = cleanCategory(p.categoria || "Sin categoria");
     if (!selectedCat && cat !== activeCategory) {
       activeCategory = cat;
       addCategory(cat);
+      rowIndex = 0;
     } else if (selectedCat && !page.length) {
       addColumns();
+      rowIndex = 0;
     }
 
     const code = productCode(p) || "";
@@ -2503,8 +2498,14 @@ function buildPriceListPdfBlobD9(products) {
     if (!selectedCat && activeCategory !== cat) {
       activeCategory = cat;
       addCategory(cat);
+      rowIndex = 0;
     } else if (selectedCat && !page.length) {
       addColumns();
+      rowIndex = 0;
+    }
+
+    if (rowIndex % 2 === 0) {
+      page.push(`0.96 0.97 0.98 rg ${margin.toFixed(2)} ${(y-rowH+4).toFixed(2)} ${(pageW-margin*2).toFixed(2)} ${rowH.toFixed(2)} re f\n`);
     }
 
     page.push(`0 0 0 rg ` + pdfTextD9(code, xCode, y, 8));
@@ -2512,6 +2513,7 @@ function buildPriceListPdfBlobD9(products) {
     page.push(pdfTextRightD9(pdfMoneyD9(productPrice(p)), xPrice, y, 8, "F2"));
     page.push(`0.86 0.90 0.93 RG ` + pdfLineD9(margin, y - rowH + 2, pageW - margin, y - rowH + 2));
     y -= rowH;
+    rowIndex++;
   });
 
   if (page.length) pages.push(page);
@@ -2526,8 +2528,15 @@ function buildPriceListPdfBlobD9(products) {
     s += `0.02 0.16 0.30 rg ` + pdfTextD9("DISTRIBUIDORA D9", 88, 800, 16, "F2");
     s += `0.25 0.38 0.48 rg ` + pdfTextD9("Lista de precios - " + titleExtra, 88, 784, 9);
     s += pdfTextRightD9("Generada: " + fecha, 552, 802, 8);
-    s += pdfTextRightD9(priceList, 552, 788, 8);
-    s += `0 0 0 rg`;
+    s += pdfTextRightD9("Enviada por: " + enviadaPor, 552, 788, 8);
+    return s;
+  }
+
+  function pageWatermark() {
+    let s = "";
+    // Marca de agua simple y muy clara. No usa alpha real para mantener compatibilidad con visores móviles.
+    s += `0.93 0.97 0.99 rg ` + pdfTextD9("D9", 214, 392, 148, "F2");
+    s += `0 0 0 rg `;
     return s;
   }
 
@@ -2539,7 +2548,7 @@ function buildPriceListPdfBlobD9(products) {
     return s;
   }
 
-  const pageStreams = pages.map((body, i) => pageHeader(i + 1, pages.length) + body.join("") + pageFooter(i + 1, pages.length));
+  const pageStreams = pages.map((body, i) => pageHeader(i + 1, pages.length) + pageWatermark() + body.join("") + pageFooter(i + 1, pages.length));
   const objects = [];
   function obj(content) { objects.push(content); return objects.length; }
   const catalogId = obj("<< /Type /Catalog /Pages 2 0 R >>");
@@ -2550,7 +2559,7 @@ function buildPriceListPdfBlobD9(products) {
   const font2Id = obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
   pageStreams.forEach(stream => {
     const contentId = objects.length + 2;
-    const pageId = obj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    const pageId = obj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /ProcSet [/PDF /Text] /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> >> /Contents ${contentId} 0 R >>`);
     pagesKids.push(`${pageId} 0 R`);
     obj(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
   });
@@ -2572,7 +2581,6 @@ function buildPriceListPdfBlobD9(products) {
   const filename = `D9-lista-precios-${generated.toISOString().slice(0,10)}.pdf`;
   return { blob: new Blob([bytes], { type: "application/pdf" }), filename };
 }
-
 async function sharePriceListPdfD9() {
   const products = getPriceListFilteredProductsD9();
   if (!products.length) {
