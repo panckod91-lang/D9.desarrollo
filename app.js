@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.35-dev (logs vendedor)";
+const APP_VERSION = "v1.3.36-dev (notas pedido)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -48,6 +48,7 @@ const state = {
   guestClientDraft: null,
   selectedCategory: "",
   cart: [],
+  orderNoteGeneral: "",
   mostradorClient: null,
   mostradorCategory: "",
   clientPickerMode: "order",
@@ -3254,9 +3255,49 @@ function removeItem(id) {
 
 function clearCart() {
   state.cart = [];
+  clearOrderNoteGeneralD9(false);
   renderProducts();
   renderQuickLabels();
   renderCart();
+}
+
+function getItemNoteD9(item) {
+  return String(item?.nota_item || item?.nota || "").trim();
+}
+
+function setItemNoteD9(id, value) {
+  const item = state.cart.find(x => String(x.id) === String(id));
+  if (!item) return;
+  const note = String(value || "").trim();
+  if (note) item.nota_item = note;
+  else delete item.nota_item;
+  renderCart();
+}
+
+function editItemNoteD9(id) {
+  const item = state.cart.find(x => String(x.id) === String(id));
+  if (!item) return toast("No encontré ese producto.");
+  const current = getItemNoteD9(item);
+  const value = window.prompt(`Nota para ${item.nombre || "producto"}:`, current);
+  if (value === null) return;
+  setItemNoteD9(id, value);
+  logAppEventD9("NOTA_ITEM_EDITADA", { resultado: "ok", detalle: item.nombre || "producto" });
+}
+
+function setOrderNoteGeneralD9(value) {
+  state.orderNoteGeneral = String(value || "").trim();
+}
+
+function clearOrderNoteGeneralD9(render = true) {
+  state.orderNoteGeneral = "";
+  const input = document.getElementById("orderNoteGeneralD9");
+  if (input) input.value = "";
+  if (render) renderCart();
+}
+
+function syncOrderNoteInputD9() {
+  const input = document.getElementById("orderNoteGeneralD9");
+  if (input && input.value !== state.orderNoteGeneral) input.value = state.orderNoteGeneral || "";
 }
 
 function cartTotal() {
@@ -3296,7 +3337,15 @@ function generateMessageText(payload = null) {
   source.carrito.forEach((item, index) => {
     lines.push(`${index + 1}) ${item.nombre}`);
     lines.push(`   · Cant: ${fmtQtyD9(item.cantidad || 0)}`);
+    const note = getItemNoteD9(item);
+    if (note) lines.push(`   · Nota: ${note}`);
   });
+
+  const notaPedido = String(source.nota_pedido || source.notaPedido || state.orderNoteGeneral || "").trim();
+  if (notaPedido) {
+    lines.push("────────────────────");
+    lines.push(`Nota pedido: ${notaPedido}`);
+  }
 
   lines.push("────────────────────");
   lines.push(`Items: ${source.carrito.length} · Unidades: ${fmtQtyD9(unidadesTotales)}`);
@@ -3436,10 +3485,13 @@ function renderCart() {
           <div class="qty-value">${fmtQtyD9(item.cantidad)}</div>
           <button class="qty-btn" data-qty="plus" data-id="${esc(item.id)}" type="button">+</button>
           <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">👉Cant.✏️</button>
+          <button class="qty-edit-btn-d9 note-item-btn-d9 ${getItemNoteD9(item) ? 'has-note-d9' : ''}" data-edit-note-d9="${esc(item.id)}" type="button">📝 Nota</button>
           <div class="product-price cart-line-total-d9">${money(item.precio * item.cantidad)}</div>
         </div>
+        ${getItemNoteD9(item) ? `<div class="cart-item-note-d9">Nota: ${esc(getItemNoteD9(item))}</div>` : ""}
       </div>`).join("");
   }
+  syncOrderNoteInputD9();
   $("#summaryItems").textContent = fmtQtyD9(state.cart.reduce((acc, item) => acc + Number(item.cantidad || 0), 0));
   $("#summaryTotal").textContent = money(cartTotal());
   const previewEl = $("#messagePreview");
@@ -3454,7 +3506,8 @@ function buildOrderFingerprint(payload) {
       String(item.id || ""),
       String(item.nombre || ""),
       Number(item.cantidad || 0),
-      Number(item.precio || 0)
+      Number(item.precio || 0),
+      getItemNoteD9(item)
     ].join(":"))
     .join("|");
 
@@ -3462,7 +3515,8 @@ function buildOrderFingerprint(payload) {
     payload?.vendedor?.id || "",
     cliente.id || cliente.nombre_real || cliente.nombre || "",
     items,
-    Number(payload?.total || 0)
+    Number(payload?.total || 0),
+    String(payload?.nota_pedido || payload?.notaPedido || "").trim()
   ].join("||");
 }
 
@@ -3609,9 +3663,10 @@ function buildOrderPayload() {
     fecha: new Date().toISOString(),
     vendedor: state.seller,
     cliente: state.selectedClient,
-    carrito: state.cart.map(x => ({ id: x.id, nombre: x.nombre, cantidad: x.cantidad, precio: x.precio })),
+    carrito: state.cart.map(x => ({ id: x.id, nombre: x.nombre, cantidad: x.cantidad, precio: x.precio, nota_item: getItemNoteD9(x) })),
     total: cartTotal(),
-    detalle: state.cart.map(x => `${x.nombre} x${x.cantidad}`).join(" | ")
+    nota_pedido: String(state.orderNoteGeneral || "").trim(),
+    detalle: state.cart.map(x => `${x.nombre} x${x.cantidad}${getItemNoteD9(x) ? ` (${getItemNoteD9(x)})` : ""}`).join(" | ")
   };
 }
 
@@ -3639,9 +3694,11 @@ function buildWebhookPayload(payload) {
       id_producto: item.id || "",
       nombre: item.nombre,
       cantidad: Number(item.cantidad || 0),
-      precio: Number(item.precio || 0)
+      precio: Number(item.precio || 0),
+      nota_item: getItemNoteD9(item)
     })),
     total: Number(payload?.total || 0),
+    nota_pedido: String(payload?.nota_pedido || payload?.notaPedido || "").trim(),
     // Se manda para futuras versiones del script. El script actual puede ignorarlo.
     fecha: payload?.fecha || new Date().toISOString(),
     fecha_original: payload?.fecha || "",
@@ -3830,6 +3887,7 @@ function saveHistory(payload, status = "enviado", error = "") {
     cliente_data: payload.cliente || null,
     detalle: payload.detalle,
     total: payload.total,
+    nota_pedido: String(payload?.nota_pedido || payload?.notaPedido || "").trim(),
     status,
     pc_status: status === "ok" ? "cargado" : "pendiente",
     whatsapp_status: "enviado",
@@ -3838,6 +3896,7 @@ function saveHistory(payload, status = "enviado", error = "") {
       nombre: x.nombre,
       cantidad: x.cantidad,
       precio: x.precio,
+      nota_item: getItemNoteD9(x),
       subtotal: Number(x.precio || 0) * Number(x.cantidad || 0)
     })),
     error
@@ -4067,10 +4126,12 @@ function buildManualPayloadFromHistoryItemD9(item) {
       id: x.id || x.id_producto || "",
       nombre: x.nombre || "",
       cantidad: Number(x.cantidad || 0),
-      precio: Number(x.precio || 0)
+      precio: Number(x.precio || 0),
+      nota_item: getItemNoteD9(x)
     })),
     total: Number(item?.total || 0),
-    detalle: item?.detalle || items.map(x => `${x.nombre || "Producto"} x${x.cantidad || 0}`).join(" | "),
+    nota_pedido: String(item?.nota_pedido || item?.notaPedido || "").trim(),
+    detalle: item?.detalle || items.map(x => `${x.nombre || "Producto"} x${x.cantidad || 0}${getItemNoteD9(x) ? ` (${getItemNoteD9(x)})` : ""}`).join(" | "),
     resync_pc: true,
     carga_manual_pc: true
   };
@@ -4215,8 +4276,9 @@ function buildPayloadFromHistoryItemD9(item) {
     fecha: item?.fecha || new Date().toISOString(),
     vendedor: { id: item?.vendedor_id || state.seller?.id || "", nombre: item?.vendedor || state.seller?.nombre || "" },
     cliente: clienteData,
-    carrito: (item?.items || []).map(x => ({ id: x.id || "", nombre: x.nombre || "", cantidad: Number(x.cantidad || 0), precio: Number(x.precio || 0) })),
+    carrito: (item?.items || []).map(x => ({ id: x.id || "", nombre: x.nombre || "", cantidad: Number(x.cantidad || 0), precio: Number(x.precio || 0), nota_item: getItemNoteD9(x) })),
     total: Number(item?.total || 0),
+    nota_pedido: String(item?.nota_pedido || item?.notaPedido || "").trim(),
     detalle: item?.detalle || "",
     resync_pc: true
   };
@@ -4438,7 +4500,7 @@ function saveDraftNowD9() {
   const drafts = getDraftsD9().filter(x => x && x.draft_id !== draft.draft_id);
   drafts.unshift(draft);
   saveDraftsD9(drafts);
-  logAppEventD9("GUARDAR_BORRADOR", { payload, pedido_id: draft.draft_id, resultado: "ok", detalle: `items:${(draft.carrito || []).length}` });
+  logAppEventD9("GUARDAR_BORRADOR", { payload, pedido_id: draft.draft_id, resultado: "ok", detalle: `items:${(draft.carrito || []).length} notas:${(draft.carrito || []).filter(x => getItemNoteD9(x)).length}${draft.nota_pedido ? " nota_pedido" : ""}` });
 
   // El borrador NO es pedido enviado y NO debe arrastrar el mismo ID al próximo pedido.
   clearDraftPedidoIdD9();
@@ -4532,6 +4594,7 @@ function continueDraftD9(draftId) {
   logAppEventD9("RECUPERAR_BORRADOR", { payload: draft, pedido_id: draftId, resultado: "ok", detalle: "Continuar borrador" });
 
   state.selectedClient = draft.cliente || null;
+  state.orderNoteGeneral = String(draft.nota_pedido || draft.notaPedido || "").trim();
   state.activePriceList = draft.activePriceList || state.selectedClient?.lista_1 || state.activePriceList || "lista_1";
   state.manualPriceOverride = !!draft.manualPriceOverride;
 
@@ -4543,7 +4606,8 @@ function continueDraftD9(draftId) {
       nombre: product?.nombre || saved.nombre,
       cantidad: Number(saved.cantidad || 1),
       precio: product ? productPrice(product) : Number(saved.precio || 0),
-      categoria: base.categoria || saved.categoria || ""
+      categoria: base.categoria || saved.categoria || "",
+      nota_item: getItemNoteD9(saved)
     };
   });
 
@@ -4682,12 +4746,14 @@ function renderHistory() {
               <div class="history-product-main">
                 <strong>${esc(prod.nombre)}</strong>
                 <div class="mini-text">${money(prod.precio)} c/u</div>
+                ${getItemNoteD9(prod) ? `<div class="mini-text history-note-d9">Nota: ${esc(getItemNoteD9(prod))}</div>` : ""}
               </div>
               <div class="history-product-side">
                 <span class="history-qty">x${esc(prod.cantidad)}</span>
                 <strong>${money(prod.subtotal ?? (Number(prod.precio || 0) * Number(prod.cantidad || 0)))}</strong>
               </div>
             </div>`).join('')}
+          ${String(item.nota_pedido || "").trim() ? `<div class="history-order-note-d9"><strong>Nota pedido:</strong> ${esc(item.nota_pedido)}</div>` : ""}
         </div>`
       : `
         <div class="history-detail ${isOpen ? '' : 'hidden'}" id="detail-${esc(itemId)}">
@@ -4731,11 +4797,13 @@ function reuseHistoryItem(id) {
   const item = history.find(x => x.id === id);
   if (!item) return toast("No encontré el pedido.");
 
+  state.orderNoteGeneral = String(item.nota_pedido || item.notaPedido || "").trim();
   state.cart = (item.items || []).map(x => ({
     id: x.id,
     nombre: x.nombre,
     cantidad: Number(x.cantidad || 1),
-    precio: Number(x.precio || 0)
+    precio: Number(x.precio || 0),
+    nota_item: getItemNoteD9(x)
   }));
 
   logAppEventD9("PEDIDO_REUTILIZADO", { pedido_id: getHistoryPedidoIdD9(item), cliente: item.cliente, total: item.total, resultado: "ok", detalle: `items:${(item.items || []).length}` });
@@ -4889,6 +4957,7 @@ function openOrderConfirmModal() {
       <div>
         <strong>${esc(item.nombre)}</strong>
         <span>${esc(itemMetaLine(item))} · Cant: ${Number(item.cantidad || 0)}</span>
+        ${getItemNoteD9(item) ? `<small class="confirm-note-d9">Nota: ${esc(getItemNoteD9(item))}</small>` : ""}
       </div>
       <b>${money(Number(item.precio || 0) * Number(item.cantidad || 0))}</b>
     </div>
@@ -4918,6 +4987,7 @@ function openOrderConfirmModal() {
 
     <div class="confirm-section-title-d9">Productos</div>
     <div class="confirm-products-d9">${productosHtml}</div>
+    ${String(payload.nota_pedido || "").trim() ? `<div class="confirm-order-note-d9"><strong>Nota pedido:</strong> ${esc(payload.nota_pedido)}</div>` : ""}
   `;
 
   confirmBtn.disabled = false;
@@ -5046,6 +5116,7 @@ function bind() {
     if (state.cart.length) toast(`Se aplicó ${priceLabel(next)} al pedido.`);
   });
   $("#btnClearCart").addEventListener("click", clearCart);
+  $("#orderNoteGeneralD9")?.addEventListener("input", (e) => setOrderNoteGeneralD9(e.target.value));
   $("#btnSend").addEventListener("click", openOrderConfirmModal);
   $("#btnCancelOrderConfirm")?.addEventListener("click", closeOrderConfirmModal);
   // D9 v1.3.33: guardado manual ahora es Borrador; pendiente solo por falla de envío.
@@ -5148,6 +5219,9 @@ function bind() {
 
     const editQty = ev.target.closest("[data-edit-qty]");
     if (editQty) openQtyModalD9(editQty.dataset.editQty);
+
+    const editNoteD9 = ev.target.closest("[data-edit-note-d9]");
+    if (editNoteD9) { ev.stopPropagation(); editItemNoteD9(editNoteD9.dataset.editNoteD9); return; }
 
     const remove = ev.target.closest("[data-remove-id]");
     if (remove) removeItem(remove.dataset.removeId);

@@ -17,7 +17,7 @@
 <meta name="twitter:title" content="Distribuidora 9 - Pedidos" />
 <meta name="twitter:description" content="Tomá pedidos rápido y fácil." />
 <meta name="twitter:image" content="https://pd9-cloud.pages.dev/og-d9.jpg" />
-  <link rel="manifest" href="manifest.json?v=dev-d9-v8" />
+  <link rel="manifest" href="manifest.json?v=dev-d9-v9" />
   <link rel="icon" href="icons/d9-dev-icon-192-v2.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/d9-dev-icon-192-v2.png" />
   <link rel="stylesheet" href="styles.css" />
@@ -181,6 +181,11 @@
           <div class="summary-box compact-summary hidden-preview-section">
             <div class="summary-row"><span>Items</span><strong id="summaryItems">0</strong></div>
             <div class="summary-row total"><span>Total</span><strong id="summaryTotal">$ 0</strong></div>
+          </div>
+
+          <div class="order-note-box-d9 hidden-preview-section">
+            <label for="orderNoteGeneralD9">Nota general del pedido</label>
+            <textarea id="orderNoteGeneralD9" rows="2" maxlength="280" placeholder="Ej: entregar mañana, surtido especial, aclaración general..."></textarea>
           </div>
 
           <div class="actions-stack">

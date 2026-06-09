@@ -3753,3 +3753,59 @@ button:active,
 .draft-waiting-d9{background:#f6fbff;border-color:rgba(24,92,170,.16)}
 .pending-draft-main-d9{min-width:0;flex:1}
 .pending-draft-side-d9{font-weight:900;color:#17315a;white-space:nowrap}
+
+
+/* D9 v1.3.36 - Notas de pedido */
+.order-note-box-d9 {
+  margin: 14px 0 4px;
+  padding: 12px;
+  border: 1px solid rgba(37, 99, 235, .16);
+  border-radius: 18px;
+  background: rgba(239, 248, 255, .72);
+}
+.order-note-box-d9 label {
+  display: block;
+  font-weight: 800;
+  color: #0f2742;
+  margin-bottom: 7px;
+}
+.order-note-box-d9 textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(15, 39, 66, .16);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font: inherit;
+  resize: vertical;
+  min-height: 48px;
+  background: rgba(255,255,255,.92);
+  color: #0f2742;
+}
+.note-item-btn-d9.has-note-d9 {
+  background: rgba(20, 184, 166, .14);
+  border-color: rgba(20, 184, 166, .28);
+  color: #0f766e;
+}
+.cart-item-note-d9,
+.history-note-d9,
+.confirm-note-d9 {
+  margin-top: 7px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: rgba(255, 247, 237, .92);
+  color: #92400e;
+  font-size: .88rem;
+  line-height: 1.25;
+}
+.confirm-note-d9 {
+  display: block;
+}
+.confirm-order-note-d9,
+.history-order-note-d9 {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(239, 248, 255, .82);
+  color: #0f2742;
+  font-size: .92rem;
+}

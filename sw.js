@@ -1,10 +1,10 @@
-const CACHE_NAME = "d9-dev-cache-v68-logs-vendedor";
+const CACHE_NAME = "d9-dev-cache-v69-notas-pedido";
 const URLS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./manifest.json?v=dev-d9-v8",
+  "./manifest.json?v=dev-d9-v9",
   "./icons/d9-dev-icon-192-v2.png",
   "./icons/d9-dev-icon-512-v2.png",
   "./icons/d9-dev-maskable-512-v2.png",
