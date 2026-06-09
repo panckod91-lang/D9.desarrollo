@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.33-dev (borradores en espera)";
+const APP_VERSION = "v1.3.34-dev (home pendientes pulido)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1493,12 +1493,22 @@ function renderPendingBadge() {
     }
   }
 
-  if (cardTitle) cardTitle.textContent = "Pendientes y en espera";
+  if (cardTitle) {
+    if (pendingCount && draftCount) cardTitle.textContent = "Pendientes y en espera";
+    else if (pendingCount) cardTitle.textContent = "Pendientes de envío";
+    else if (draftCount) cardTitle.textContent = "Borradores en espera";
+    else cardTitle.textContent = "Pendientes y en espera";
+  }
   if (cardSub) {
-    if (pendingCount && draftCount) cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
-    else if (pendingCount) cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} de envío`;
-    else if (draftCount) cardSub.textContent = `${draftCount} borrador${draftCount === 1 ? "" : "es"} en espera`;
-    else cardSub.textContent = "Nada pendiente";
+    if (pendingCount && draftCount) {
+      cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} de envío · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
+    } else if (pendingCount) {
+      cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} automático${pendingCount === 1 ? "" : "s"}`;
+    } else if (draftCount) {
+      cardSub.textContent = `${draftCount} borrador${draftCount === 1 ? "" : "es"} en espera`;
+    } else {
+      cardSub.textContent = "Sin pendientes ni borradores";
+    }
   }
 
   if (!el) return;
@@ -4653,7 +4663,7 @@ function resetTransientUI() {
   const sendBtn = $("#btnSend");
   const syncBtn = $("#btnSyncPending");
   if (sendBtn) setButtonBusy(sendBtn, false, "Enviando...", "Enviar pedido");
-  if (syncBtn?.tagName === "BUTTON") setButtonBusy(syncBtn, false, "Sincronizando...", syncBtn?.dataset?.idleLabel || "Pendientes");
+  if (syncBtn?.tagName === "BUTTON") setButtonBusy(syncBtn, false, "Sincronizando...", syncBtn?.dataset?.idleLabel || "Pendientes y en espera");
   else if (syncBtn) syncBtn.classList.remove("syncing");
 }
 
