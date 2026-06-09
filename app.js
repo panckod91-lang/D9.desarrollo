@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.25-dev (PDF lista tetris real)";
+const APP_VERSION = "v1.3.26-dev (PDF titulo busqueda)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2491,7 +2491,15 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   const enviadaPor = pdfAsciiD9(state.seller?.nombre || state.seller?.usuario || "D9");
   const term = String(state.priceSearch || "").trim();
   const selectedCat = state.priceCategory || "";
-  const titleExtra = selectedCat ? cleanCategory(selectedCat) : (term ? `Busqueda: ${term}` : "Lista completa");
+  const cleanTerm = pdfAsciiD9(term).toUpperCase();
+  let titleExtra = "Lista completa";
+  if (selectedCat && term) {
+    titleExtra = `${cleanCategory(selectedCat)} · Filtro: ${cleanTerm}`;
+  } else if (selectedCat) {
+    titleExtra = cleanCategory(selectedCat);
+  } else if (term) {
+    titleExtra = `Resultados filtrados: ${cleanTerm}`;
+  }
   const maxNameChars = 54;
   const rowLineH = 9;
   const rowMinH = 14;
