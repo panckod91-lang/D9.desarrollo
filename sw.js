@@ -1,10 +1,10 @@
-const CACHE_NAME = "d9-dev-cache-v65-install-button";
+const CACHE_NAME = "d9-dev-cache-v66-borradores-en-espera";
 const URLS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./manifest.json?v=dev-d9-v5",
+  "./manifest.json?v=dev-d9-v6",
   "./icons/d9-dev-icon-192-v2.png",
   "./icons/d9-dev-icon-512-v2.png",
   "./icons/d9-dev-maskable-512-v2.png",

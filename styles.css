@@ -3739,3 +3739,17 @@ button:active,
     width:100% !important;
   }
 }
+
+
+/* D9 v1.3.33 - Pendientes y borradores */
+.pending-drafts-list-d9{display:flex;flex-direction:column;gap:14px}
+.pending-drafts-section-d9{border:1px solid rgba(24,92,170,.14);border-radius:18px;padding:12px;background:#fff}
+.pending-drafts-title-d9{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;color:#17315a}
+.pending-drafts-title-d9 span{min-width:28px;height:28px;border-radius:999px;background:#eef6ff;color:#185caa;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.pending-drafts-help-d9{margin:0 0 10px}
+.pending-draft-item-d9{display:flex;justify-content:space-between;gap:12px;margin-top:10px;padding:12px;border-radius:16px;background:#f8fbff;border:1px solid rgba(24,92,170,.10)}
+.pending-draft-item-d9 strong{color:#17315a}
+.pending-auto-d9{background:#fffaf2;border-color:rgba(235,147,24,.20)}
+.draft-waiting-d9{background:#f6fbff;border-color:rgba(24,92,170,.16)}
+.pending-draft-main-d9{min-width:0;flex:1}
+.pending-draft-side-d9{font-weight:900;color:#17315a;white-space:nowrap}

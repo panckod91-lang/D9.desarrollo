@@ -17,7 +17,7 @@
 <meta name="twitter:title" content="Distribuidora 9 - Pedidos" />
 <meta name="twitter:description" content="Tomá pedidos rápido y fácil." />
 <meta name="twitter:image" content="https://pd9-cloud.pages.dev/og-d9.jpg" />
-  <link rel="manifest" href="manifest.json?v=dev-d9-v5" />
+  <link rel="manifest" href="manifest.json?v=dev-d9-v6" />
   <link rel="icon" href="icons/d9-dev-icon-192-v2.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/d9-dev-icon-192-v2.png" />
   <link rel="stylesheet" href="styles.css" />
@@ -98,12 +98,12 @@
             <span class="go-vnext">›</span>
           </button>
 
-          <div id="btnSyncPending" class="action-card-vnext pending-card-vnext pending-info-card-vnext" data-title="Pendientes" data-sub="Registros pendientes de envío">
+          <div id="btnSyncPending" class="action-card-vnext pending-card-vnext pending-info-card-vnext" data-title="Pendientes y en espera" data-sub="Pendientes de envío y borradores">
             <span class="action-head-vnext">
               <span class="icon-wrap-vnext warm">📋</span>
               <span class="title-group-vnext">
-                <strong id="pendingInfoTitle">Sin pendientes</strong>
-                <small id="pendingInfoText">Pedidos sincronizados</small>
+                <strong id="pendingInfoTitle">Pendientes y en espera</strong>
+                <small id="pendingInfoText">Nada pendiente</small>
               </span>
             </span>
             <span class="pending-count-vnext hidden">0</span>
@@ -184,7 +184,7 @@
           </div>
 
           <div class="actions-stack">
-            <button id="btnSavePending" class="secondary-btn" data-title="Guardar pendiente" type="button">Guardar pendiente</button>
+            <button id="btnSaveDraftD9" class="secondary-btn" data-title="Guardar borrador" type="button">Guardar borrador</button>
             <button id="btnSend" class="primary-btn" data-title="Enviar pedido" type="button">Enviar pedido</button>
           </div>
         </div>
@@ -237,6 +237,20 @@
 
         <div class="card">
           <div id="historyList" class="history-list empty-state">Sin movimientos todavía.</div>
+        </div>
+      </section>
+
+      <section id="view-pending" class="view">
+        <div class="view-head history-head-d9">
+          <button class="back-btn history-home-d9 home-red-d9" data-back="home" type="button" aria-label="Volver al inicio">🏠</button>
+          <div class="history-title-d9">
+            <h2>Pendientes y en espera</h2>
+            <p class="subhead">Pendientes automáticos y borradores guardados.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="pendingWorkListD9" class="history-list empty-state">Sin pendientes ni borradores.</div>
         </div>
       </section>
 

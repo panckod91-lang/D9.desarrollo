@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.32-dev (boton instalar app)";
+const APP_VERSION = "v1.3.33-dev (borradores en espera)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   history: "d9_historial",
   salesHistory: "d9_historial_ventas_mostrador",
   pending: "d9_pendientes",
+  drafts: "d9_borradores_en_espera",
   guestClient: "d9_invitado_cliente",
   versionLogged: "d9_version_logged"
 };
@@ -1468,7 +1469,10 @@ function renderSellerBadge() {
 
 function renderPendingBadge() {
   const pending = readJSON(STORAGE_KEYS.pending, []);
-  const count = pending.length;
+  const drafts = readJSON(STORAGE_KEYS.drafts, []);
+  const pendingCount = pending.length;
+  const draftCount = drafts.length;
+  const totalCount = pendingCount + draftCount;
   const el = $("#pendingBadge");
   const card = $("#btnSyncPending");
   const cardCount = document.querySelector(".pending-count-vnext");
@@ -1476,29 +1480,34 @@ function renderPendingBadge() {
   const cardSub = $("#pendingInfoText");
 
   if (card) {
-    card.classList.toggle("has-pending", count > 0);
+    card.classList.toggle("has-pending", totalCount > 0);
     card.classList.remove("syncing");
   }
 
   if (cardCount) {
-    if (!count) {
+    if (!totalCount) {
       cardCount.classList.add("hidden");
     } else {
       cardCount.classList.remove("hidden");
-      cardCount.textContent = String(count);
+      cardCount.textContent = String(totalCount);
     }
   }
 
-  if (cardTitle) cardTitle.textContent = count ? `${count} pendiente${count === 1 ? "" : "s"}` : "Sin pendientes";
-  if (cardSub) cardSub.textContent = count ? "Se enviarán con conexión" : "Pedidos sincronizados";
+  if (cardTitle) cardTitle.textContent = "Pendientes y en espera";
+  if (cardSub) {
+    if (pendingCount && draftCount) cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
+    else if (pendingCount) cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} de envío`;
+    else if (draftCount) cardSub.textContent = `${draftCount} borrador${draftCount === 1 ? "" : "es"} en espera`;
+    else cardSub.textContent = "Nada pendiente";
+  }
 
   if (!el) return;
-  if (!count) {
+  if (!totalCount) {
     el.classList.add("hidden");
     return;
   }
   el.classList.remove("hidden");
-  el.textContent = `${count} pendiente${count === 1 ? "" : "s"}`;
+  el.textContent = String(totalCount);
 }
 
 function getBannerRows() {
@@ -4204,15 +4213,44 @@ async function sendOrder() {
 
 
 function savePendingNow() {
+  // D9 v1.3.33: el guardado manual como pendiente queda legacy.
+  // Los pendientes ahora se generan solamente si falla el envío real.
+  return saveDraftNowD9();
+}
+
+function getDraftsD9() {
+  return readJSON(STORAGE_KEYS.drafts, []);
+}
+
+function saveDraftsD9(items) {
+  saveJSON(STORAGE_KEYS.drafts, Array.isArray(items) ? items.slice(0, 100) : []);
+}
+
+function makeDraftIdD9() {
+  const rnd = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `draft_${Date.now().toString(36)}_${rnd}`;
+}
+
+function saveDraftNowD9() {
   if (validateOrder() !== true) return;
+
   const payload = buildOrderPayload();
-  if (isRecentOrderFingerprintBlockedD9(payload, 120000)) {
-    toast("Este mismo pedido ya fue enviado hace instantes. No lo guardo duplicado.");
-    return;
-  }
-  savePendingPayload(payload);
-  saveHistory(payload, "pendiente");
+  const draft = {
+    ...payload,
+    draft_id: makeDraftIdD9(),
+    tipo_local: "BORRADOR",
+    fecha_guardado: new Date().toISOString(),
+    activePriceList: state.activePriceList || "lista_1",
+    manualPriceOverride: !!state.manualPriceOverride
+  };
+
+  const drafts = getDraftsD9().filter(x => x && x.draft_id !== draft.draft_id);
+  drafts.unshift(draft);
+  saveDraftsD9(drafts);
+
+  // El borrador NO es pedido enviado y NO debe arrastrar el mismo ID al próximo pedido.
   clearDraftPedidoIdD9();
+
   if (state.seller?.rol === "cliente") {
     applyUserContext();
   } else if (!state.seller) {
@@ -4223,7 +4261,128 @@ function savePendingNow() {
   clearCart();
   renderSelectedClient();
   renderClients();
-  toast("Pedido guardado como pendiente.");
+  renderPendingBadge();
+  toast("Borrador guardado. No se enviará automáticamente.");
+}
+
+function pendingClienteNameD9(item) {
+  const c = item?.cliente || {};
+  return c.nombre_real || c.nombre || item?.cliente_nombre || "Cliente";
+}
+
+function itemDateLabelD9(value) {
+  try { return new Date(value || Date.now()).toLocaleString("es-AR"); } catch { return ""; }
+}
+
+function renderPendingAndDraftsD9() {
+  const list = $("#pendingWorkListD9");
+  if (!list) return;
+
+  const pending = readJSON(STORAGE_KEYS.pending, []);
+  const drafts = getDraftsD9();
+  renderPendingBadge();
+
+  if (!pending.length && !drafts.length) {
+    list.className = "history-list empty-state";
+    list.textContent = "No hay pendientes ni borradores en espera.";
+    return;
+  }
+
+  list.className = "history-list pending-drafts-list-d9";
+
+  const pendingHtml = pending.length ? `
+    <div class="pending-drafts-section-d9">
+      <div class="pending-drafts-title-d9">
+        <strong>⚠️ Pendientes de envío</strong>
+        <span>${pending.length}</span>
+      </div>
+      <p class="mini-text pending-drafts-help-d9">Pedidos que salieron o intentaron salir, pero todavía no quedaron confirmados en la PC.</p>
+      <button id="btnRetryPendingD9" class="history-action-btn history-action-main-d9" type="button">🔁 Reintentar pendientes</button>
+      ${pending.map(item => `
+        <div class="pending-draft-item-d9 pending-auto-d9">
+          <div>
+            <strong>${esc(pendingClienteNameD9(item))}</strong>
+            <div class="mini-text">${esc(itemDateLabelD9(item?.fecha))}</div>
+            <div class="mini-text">ID: ${esc(item?.pedido_id || item?.pedidoId || "sin ID")}${item?.error ? " · " + esc(item.error) : ""}</div>
+          </div>
+          <div class="pending-draft-side-d9">${money(Number(item?.total || 0))}</div>
+        </div>`).join("")}
+    </div>` : "";
+
+  const draftsHtml = drafts.length ? `
+    <div class="pending-drafts-section-d9">
+      <div class="pending-drafts-title-d9">
+        <strong>📝 Borradores en espera</strong>
+        <span>${drafts.length}</span>
+      </div>
+      <p class="mini-text pending-drafts-help-d9">Guardados manualmente. No se envían solos. Hay que continuarlos, revisar y enviar por WhatsApp.</p>
+      ${drafts.map(item => `
+        <div class="pending-draft-item-d9 draft-waiting-d9">
+          <div class="pending-draft-main-d9">
+            <strong>${esc(pendingClienteNameD9(item))}</strong>
+            <div class="mini-text">Guardado: ${esc(itemDateLabelD9(item?.fecha_guardado || item?.fecha))}</div>
+            <div class="mini-text">${esc((item?.carrito || []).length)} producto${(item?.carrito || []).length === 1 ? "" : "s"} · ${money(Number(item?.total || 0))}</div>
+            <div class="history-actions history-actions-compact-d9" data-no-toggle>
+              <button class="history-action-btn history-action-main-d9" data-continue-draft-d9="${esc(item.draft_id)}" type="button">Continuar</button>
+              <button class="history-delete-btn" data-delete-draft-d9="${esc(item.draft_id)}" type="button">🗑️</button>
+            </div>
+          </div>
+        </div>`).join("")}
+    </div>` : "";
+
+  list.innerHTML = pendingHtml + draftsHtml;
+}
+
+function continueDraftD9(draftId) {
+  const drafts = getDraftsD9();
+  const draft = drafts.find(x => x && x.draft_id === draftId);
+  if (!draft) return toast("No encontré ese borrador.");
+
+  state.selectedClient = draft.cliente || null;
+  state.activePriceList = draft.activePriceList || state.selectedClient?.lista_1 || state.activePriceList || "lista_1";
+  state.manualPriceOverride = !!draft.manualPriceOverride;
+
+  state.cart = (draft.carrito || []).map(saved => {
+    const product = state.products.find(p => String(p.id) === String(saved.id));
+    const base = product || saved;
+    return {
+      id: saved.id,
+      nombre: product?.nombre || saved.nombre,
+      cantidad: Number(saved.cantidad || 1),
+      precio: product ? productPrice(product) : Number(saved.precio || 0),
+      categoria: base.categoria || saved.categoria || ""
+    };
+  });
+
+  // Se borra al continuar para evitar que quede duplicado como borrador viejo.
+  saveDraftsD9(drafts.filter(x => x && x.draft_id !== draftId));
+  clearDraftPedidoIdD9();
+
+  renderSelectedClient();
+  renderOrderPriceListControls();
+  renderClients();
+  renderProducts();
+  renderQuickLabels();
+  renderCart();
+  renderPendingBadge();
+  showView("order");
+  toast("Borrador cargado para continuar.");
+}
+
+function deleteDraftD9(draftId) {
+  showD9Confirm({
+    message: "¿Borrar este borrador?",
+    detail: "No borra ningún pedido enviado ni nada de Google Sheets.",
+    okText: "Borrar",
+    cancelText: "Cancelar",
+    onOk: () => {
+      const drafts = getDraftsD9().filter(x => x && x.draft_id !== draftId);
+      saveDraftsD9(drafts);
+      renderPendingAndDraftsD9();
+      renderPendingBadge();
+      toast("Borrador eliminado.");
+    }
+  });
 }
 
 async function syncPending() {
@@ -4267,6 +4426,7 @@ async function syncPending() {
 
     saveJSON(STORAGE_KEYS.pending, remaining);
     renderPendingBadge();
+    if (state.currentView === "pending") renderPendingAndDraftsD9();
 
     if (sentCount && !remaining.length) {
       toast("Pendientes sincronizados.");
@@ -4285,7 +4445,7 @@ async function syncPending() {
   } finally {
     state.isSyncing = false;
     if (syncBtnIsButton) {
-      setButtonBusy(syncBtn, false, "Sincronizando...", syncBtn?.dataset?.idleLabel || "Pendientes");
+      setButtonBusy(syncBtn, false, "Sincronizando...", syncBtn?.dataset?.idleLabel || "Pendientes y en espera");
     } else if (syncBtn) {
       syncBtn.classList.remove("syncing");
     }
@@ -4658,7 +4818,7 @@ function bind() {
   const companyBtn = $("#btnCompanyInfo");
   if (companyBtn) companyBtn.addEventListener("click", openCompanyInfo);
   const syncPendingEl = $("#btnSyncPending");
-  if (syncPendingEl?.tagName === "BUTTON") syncPendingEl.addEventListener("click", syncPending);
+  if (syncPendingEl) syncPendingEl.addEventListener("click", () => { renderPendingAndDraftsD9(); showView("pending"); });
   $("#btnLogin").addEventListener("click", loginSeller);
   $("#btnLogout").addEventListener("click", logoutSeller);
   $("#btnSaveOccasionalClient").addEventListener("click", saveOccasionalClient);
@@ -4689,8 +4849,8 @@ function bind() {
   $("#btnClearCart").addEventListener("click", clearCart);
   $("#btnSend").addEventListener("click", openOrderConfirmModal);
   $("#btnCancelOrderConfirm")?.addEventListener("click", closeOrderConfirmModal);
-  // D9 v1.3.17: confirmación vinculada por listener delegado anti-render.
-  $("#btnSavePending").addEventListener("click", savePendingNow);
+  // D9 v1.3.33: guardado manual ahora es Borrador; pendiente solo por falla de envío.
+  $("#btnSaveDraftD9")?.addEventListener("click", saveDraftNowD9);
   $("#btnExportHistory").addEventListener("click", exportHistory);
   $("#btnRestoreHistory")?.addEventListener("click", openRestoreHistory);
   $("#restoreHistoryFile")?.addEventListener("change", restoreHistoryFromFile);
@@ -4842,6 +5002,27 @@ function bind() {
     if (deleteHistory) {
       ev.stopPropagation();
       deleteHistoryItem(deleteHistory.dataset.deleteHistory);
+      return;
+    }
+
+    const retryPendingD9 = ev.target.closest("#btnRetryPendingD9");
+    if (retryPendingD9) {
+      ev.stopPropagation();
+      syncPending();
+      return;
+    }
+
+    const continueDraftBtnD9 = ev.target.closest("[data-continue-draft-d9]");
+    if (continueDraftBtnD9) {
+      ev.stopPropagation();
+      continueDraftD9(continueDraftBtnD9.dataset.continueDraftD9);
+      return;
+    }
+
+    const deleteDraftBtnD9 = ev.target.closest("[data-delete-draft-d9]");
+    if (deleteDraftBtnD9) {
+      ev.stopPropagation();
+      deleteDraftD9(deleteDraftBtnD9.dataset.deleteDraftD9);
       return;
     }
 
