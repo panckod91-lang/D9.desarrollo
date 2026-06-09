@@ -1,10 +1,10 @@
-const CACHE_NAME = "d9-dev-cache-v64-meta-og-clean";
+const CACHE_NAME = "d9-dev-cache-v65-install-button";
 const URLS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./manifest.json?v=dev-d9-v4",
+  "./manifest.json?v=dev-d9-v5",
   "./icons/d9-dev-icon-192-v2.png",
   "./icons/d9-dev-icon-512-v2.png",
   "./icons/d9-dev-maskable-512-v2.png",
