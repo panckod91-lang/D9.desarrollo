@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v60-pdf-categorias-sin-solape";
+const CACHE_NAME = "d9-dev-cache-v61-pdf-categorias-columnas-ok";
 const URLS = [
   "./",
   "./index.html",

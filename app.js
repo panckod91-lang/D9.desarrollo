@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.27-dev (PDF sin solapado categorias)";
+const APP_VERSION = "v1.3.28-dev (PDF categorias columnas ok)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2505,7 +2505,7 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   const rowMinH = 14;
   const rowPadTop = 3;
   const rowPadBottom = 3;
-  const headerH = 22;
+  const headerH = 27;
   const columnsH = 15;
   const pageBodyH = topY - bottomY;
 
