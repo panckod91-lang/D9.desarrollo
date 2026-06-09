@@ -1,18 +1,13 @@
-const CACHE_NAME = "d9-dev-cache-v62-manifest-d9-dev";
+const CACHE_NAME = "d9-dev-cache-v64-meta-og-clean";
 const URLS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./manifest.json?v=dev-d9-v2",
+  "./manifest.json?v=dev-d9-v4",
   "./icons/d9-dev-icon-192-v2.png",
   "./icons/d9-dev-icon-512-v2.png",
   "./icons/d9-dev-maskable-512-v2.png",
-  "./icons/d9-dev-logo-v2.png",
-  "./icons/icon.svg",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/icon-maskable-512.png",
   "./icons/logo_d9.png"
 ];
 
