@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.36-dev (notas pedido)";
+const APP_VERSION = "v1.3.37-dev (carrito notas compacto)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3478,17 +3478,20 @@ function renderCart() {
             <strong>${esc(item.nombre)}</strong>
             <div class="mini-text">${esc(itemMetaLine(item))}</div>
           </div>
-          <button class="remove-btn" data-remove-id="${esc(item.id)}" type="button">Quitar</button>
+          <button class="remove-btn cart-trash-btn-d9" data-remove-id="${esc(item.id)}" type="button" title="Quitar producto" aria-label="Quitar producto">🗑️</button>
         </div>
         <div class="qty-row qty-row-pro-d9">
           <button class="qty-btn" data-qty="minus" data-id="${esc(item.id)}" type="button">−</button>
           <div class="qty-value">${fmtQtyD9(item.cantidad)}</div>
           <button class="qty-btn" data-qty="plus" data-id="${esc(item.id)}" type="button">+</button>
-          <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">👉Cant.✏️</button>
-          <button class="qty-edit-btn-d9 note-item-btn-d9 ${getItemNoteD9(item) ? 'has-note-d9' : ''}" data-edit-note-d9="${esc(item.id)}" type="button">📝 Nota</button>
-          <div class="product-price cart-line-total-d9">${money(item.precio * item.cantidad)}</div>
+          <button class="qty-edit-btn-d9" data-edit-qty="${esc(item.id)}" type="button">Cant.</button>
+          <button class="qty-edit-btn-d9 note-item-btn-d9 ${getItemNoteD9(item) ? 'has-note-d9' : ''}" data-edit-note-d9="${esc(item.id)}" type="button" title="Nota del producto" aria-label="Nota del producto">📝</button>
         </div>
-        ${getItemNoteD9(item) ? `<div class="cart-item-note-d9">Nota: ${esc(getItemNoteD9(item))}</div>` : ""}
+        <div class="cart-subtotal-row-d9">
+          <span>Subtotal</span>
+          <strong class="product-price cart-line-total-d9">${money(item.precio * item.cantidad)}</strong>
+        </div>
+        ${getItemNoteD9(item) ? `<div class="cart-item-note-d9">${esc(getItemNoteD9(item))}</div>` : ""}
       </div>`).join("");
   }
   syncOrderNoteInputD9();

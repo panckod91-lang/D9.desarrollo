@@ -3809,3 +3809,61 @@ button:active,
   color: #0f2742;
   font-size: .92rem;
 }
+
+
+/* D9 v1.3.37 - Carrito compacto con notas */
+.cart-trash-btn-d9{
+  min-width:56px !important;
+  width:56px !important;
+  height:52px !important;
+  padding:0 !important;
+  border-radius:18px !important;
+  font-size:22px !important;
+  line-height:1 !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+}
+.cart-item .qty-row-pro-d9{
+  grid-template-columns:52px minmax(34px,auto) 52px minmax(64px,auto) 52px !important;
+  gap:8px !important;
+  align-items:center !important;
+}
+.cart-item .qty-edit-btn-d9{
+  min-height:44px !important;
+  padding:0 10px !important;
+  border-radius:14px !important;
+}
+.cart-item .note-item-btn-d9{
+  width:52px !important;
+  min-width:52px !important;
+  padding:0 !important;
+  font-size:22px !important;
+}
+.cart-subtotal-row-d9{
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  color:#6f7f8d;
+  font-size:.92rem;
+}
+.cart-subtotal-row-d9 .cart-line-total-d9{
+  min-width:0 !important;
+  text-align:right !important;
+  font-size:1.05rem !important;
+  white-space:nowrap !important;
+}
+.cart-item-note-d9{
+  margin-top:8px !important;
+  padding:7px 10px !important;
+}
+@media (max-width:420px){
+  .cart-item .qty-row-pro-d9{
+    grid-template-columns:48px minmax(30px,auto) 48px minmax(58px,auto) 48px !important;
+    gap:6px !important;
+  }
+  .cart-trash-btn-d9{width:52px !important;min-width:52px !important;height:50px !important;}
+  .cart-item .note-item-btn-d9{width:48px !important;min-width:48px !important;}
+}
