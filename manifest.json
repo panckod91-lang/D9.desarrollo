@@ -1,6 +1,6 @@
 {
   "name": "Distribuidora D9 Desarrollo",
-  "short_name": "D9 Dev",
+  "short_name": "D9-Dev",
   "description": "Entorno de desarrollo del gestor de pedidos y consultas Distribuidora D9",
   "id": "./index.html?app=d9-dev",
   "start_url": "./index.html?app=d9-dev",
