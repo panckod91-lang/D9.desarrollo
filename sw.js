@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v70-carrito-notas-compacto";
+const CACHE_NAME = "d9-dev-cache-v71-carrito-notas-mas-compacto";
 const URLS = [
   "./",
   "./index.html",
