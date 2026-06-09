@@ -1,10 +1,12 @@
 {
-  "name": "Panckobros!",
-  "short_name": "Panckobros!",
+  "name": "Distribuidora D9 Desarrollo",
+  "short_name": "D9 Dev",
+  "description": "Entorno de desarrollo del gestor de pedidos D9",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#101827",
+  "background_color": "#eaf8ff",
+  "theme_color": "#5ec7ef",
   "orientation": "portrait",
   "icons": [
     {
