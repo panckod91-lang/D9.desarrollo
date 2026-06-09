@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.22-dev (PDF lista paginacion inteligente)";
+const APP_VERSION = "v1.3.23-dev (PDF lista pulido final)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2430,7 +2430,36 @@ function pdfLineD9(x1, y1, x2, y2) {
   return `${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S\n`;
 }
 
-function buildPriceListPdfBlobD9(products) {
+async function loadPdfLogoJpegD9() {
+  try {
+    const src = "icons/logo_d9.png";
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = src;
+    });
+    const size = 160;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, size, size);
+    const scale = Math.min(size / img.width, size / img.height) * 0.92;
+    const w = img.width * scale;
+    const h = img.height * scale;
+    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+    const bin = atob(dataUrl.split(",")[1] || "");
+    return { data: bin, width: size, height: size };
+  } catch (err) {
+    console.warn("No se pudo cargar logo real para PDF:", err);
+    return null;
+  }
+}
+
+function buildPriceListPdfBlobD9(products, logoImage) {
   const pageW = 595.28;
   const pageH = 841.89;
   const margin = 36;
@@ -2451,11 +2480,11 @@ function buildPriceListPdfBlobD9(products) {
   const titleExtra = selectedCat ? cleanCategory(selectedCat) : (term ? `Busqueda: ${term}` : "Lista completa");
   const maxNameChars = 54;
   const rowLineH = 9;
-  const rowMinH = 15;
-  const rowPadTop = 4;
-  const rowPadBottom = 4;
-  const headerH = 24;
-  const columnsH = 16;
+  const rowMinH = 14;
+  const rowPadTop = 3;
+  const rowPadBottom = 3;
+  const headerH = 22;
+  const columnsH = 15;
   const pageBodyH = topY - bottomY;
 
   function newPage() {
@@ -2509,18 +2538,18 @@ function buildPriceListPdfBlobD9(products) {
       return false;
     }
 
-    const rowTop = y + 4;
-    const rowBottom = y - rowH + 4;
+    const rowTop = y;
+    const rowBottom = y - rowH;
     if (rowIndex % 2 === 0) {
-      page.push(`0.965 0.972 0.982 rg ${margin.toFixed(2)} ${rowBottom.toFixed(2)} ${(pageW-margin*2).toFixed(2)} ${rowH.toFixed(2)} re f\n`);
+      page.push(`0.965 0.970 0.978 rg ${margin.toFixed(2)} ${rowBottom.toFixed(2)} ${(pageW-margin*2).toFixed(2)} ${rowH.toFixed(2)} re f\n`);
     }
 
     const code = productCode(p) || "";
-    const baseY = y - 2;
+    const baseY = rowTop - rowPadTop - 8;
     page.push(`0 0 0 rg ` + pdfTextD9(code, xCode, baseY, 8));
     nameLines.forEach((ln, i) => page.push(pdfTextD9(ln, xName, baseY - (i * rowLineH), 8)));
     page.push(pdfTextRightD9(pdfMoneyD9(productPrice(p)), xPrice, baseY, 8, "F2"));
-    page.push(`0.86 0.90 0.93 RG ` + pdfLineD9(margin, rowBottom, pageW - margin, rowBottom));
+    page.push(`0.91 0.94 0.96 RG ` + pdfLineD9(margin, rowBottom, pageW - margin, rowBottom));
     y -= rowH;
     rowIndex++;
     return true;
@@ -2547,16 +2576,17 @@ function buildPriceListPdfBlobD9(products) {
   groups.forEach(group => {
     if (!group.items.length) return;
 
-    // Si la categoria completa entra en una pagina, no la cortamos: saltamos entera.
+    // Regla reportes D9:
+    // Si el principio de una categoria no entra entero en lo que queda de la pagina,
+    // la categoria arranca en pagina nueva aunque despues sea grande y continue.
     const fullH = categoryHeight(group);
-    if (fullH <= pageBodyH && remainingH() < fullH && page.length) {
+    if (page.length && remainingH() < fullH) {
       newPage();
     }
 
     addCategoryHeader(group.cat, false);
     for (let i = 0; i < group.items.length; i++) {
       if (!addRow(group.items[i])) {
-        // Categoria grande: inevitable cortarla, pero repetimos titulo y columnas en la pagina nueva.
         addCategoryHeader(group.cat, true);
         addRow(group.items[i]);
       }
@@ -2566,12 +2596,18 @@ function buildPriceListPdfBlobD9(products) {
   if (page.length) pages.push(page);
   if (!pages.length) pages.push([pdfTextD9("Sin productos para listar.", margin, topY, 10)]);
 
+  let logoImageId = null;
+
   function pageHeader(pageNum, total) {
     let s = "";
     s += `0.95 0.98 1 rg 28 774 539 44 re f\n`;
     s += `0.38 0.74 0.91 RG 28 774 539 44 re S\n`;
-    s += `0.10 0.45 0.78 rg 42 786 34 22 re f\n`;
-    s += `1 1 1 rg ` + pdfTextD9("D9", 49, 793, 14, "F2");
+    if (logoImageId) {
+      s += `q 34 0 0 34 42 782 cm /ImLogo Do Q\n`;
+    } else {
+      s += `0.10 0.45 0.78 rg 42 786 34 22 re f\n`;
+      s += `1 1 1 rg ` + pdfTextD9("D9", 49, 793, 14, "F2");
+    }
     s += `0.02 0.16 0.30 rg ` + pdfTextD9("DISTRIBUIDORA D9", 88, 800, 16, "F2");
     s += `0.25 0.38 0.48 rg ` + pdfTextD9("Lista de precios - " + titleExtra, 88, 784, 9);
     s += pdfTextRightD9("Generada: " + fecha, 552, 802, 8);
@@ -2581,8 +2617,8 @@ function buildPriceListPdfBlobD9(products) {
 
   function pageWatermark() {
     let s = "";
-    // Marca de agua simple y muy clara. No usa alpha real para mantener compatibilidad con visores móviles.
-    s += `0.93 0.97 0.99 rg ` + pdfTextD9("D9", 214, 392, 148, "F2");
+    // Marca de agua textual ultra clara. Evita alpha/transparencias para máxima compatibilidad móvil.
+    s += `0.94 0.98 1 rg ` + pdfTextD9("D9", 214, 392, 148, "F2");
     s += `0 0 0 rg `;
     return s;
   }
@@ -2595,7 +2631,6 @@ function buildPriceListPdfBlobD9(products) {
     return s;
   }
 
-  const pageStreams = pages.map((body, i) => pageHeader(i + 1, pages.length) + pageWatermark() + body.join("") + pageFooter(i + 1, pages.length));
   const objects = [];
   function obj(content) { objects.push(content); return objects.length; }
   const catalogId = obj("<< /Type /Catalog /Pages 2 0 R >>");
@@ -2604,9 +2639,16 @@ function buildPriceListPdfBlobD9(products) {
   objects.push("");
   const font1Id = obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   const font2Id = obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+
+  if (logoImage && logoImage.data) {
+    logoImageId = obj(`<< /Type /XObject /Subtype /Image /Width ${Number(logoImage.width || 160)} /Height ${Number(logoImage.height || 160)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoImage.data.length} >>\nstream\n${logoImage.data}\nendstream`);
+  }
+
+  const pageStreams = pages.map((body, i) => pageHeader(i + 1, pages.length) + pageWatermark() + body.join("") + pageFooter(i + 1, pages.length));
   pageStreams.forEach(stream => {
     const contentId = objects.length + 2;
-    const pageId = obj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /ProcSet [/PDF /Text] /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    const xObjects = logoImageId ? `/XObject << /ImLogo ${logoImageId} 0 R >>` : "";
+    const pageId = obj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW.toFixed(2)} ${pageH.toFixed(2)}] /Resources << /ProcSet [/PDF /Text /ImageC] /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> ${xObjects} >> /Contents ${contentId} 0 R >>`);
     pagesKids.push(`${pageId} 0 R`);
     obj(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
   });
@@ -2638,7 +2680,8 @@ async function sharePriceListPdfD9() {
 
   try {
     toast("Armando PDF...");
-    const { blob, filename } = buildPriceListPdfBlobD9(products);
+    const logoImage = await loadPdfLogoJpegD9();
+    const { blob, filename } = buildPriceListPdfBlobD9(products, logoImage);
     const file = new File([blob], filename, { type: "application/pdf" });
     const shareData = {
       title: "Lista de precios D9",
