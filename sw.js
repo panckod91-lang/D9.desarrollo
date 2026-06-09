@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-dev-cache-v57-pdf-lista-optimizada";
+const CACHE_NAME = "d9-dev-cache-v58-pdf-lista-tetris-real";
 const URLS = [
   "./",
   "./index.html",

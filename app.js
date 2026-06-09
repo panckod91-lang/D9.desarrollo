@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.3.24-dev (PDF lista optimizada)";
+const APP_VERSION = "v1.3.25-dev (PDF lista tetris real)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2599,24 +2599,38 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   }
 
   const pendingGroups = groups.filter(g => g.items && g.items.length);
+
+  function findFillerGroupIndex(maxH) {
+    if (selectedCat || maxH <= 0) return -1;
+    // Busca una categoría posterior que entre completa en el hueco actual.
+    // No usa categorías gigantes como relleno porque esas siempre arrancan mejor en página nueva.
+    let bestIdx = -1;
+    let bestH = 0;
+    for (let i = 1; i < pendingGroups.length; i++) {
+      const h = categoryHeight(pendingGroups[i]);
+      if (h <= pageBodyH && h <= maxH && h > bestH) {
+        bestIdx = i;
+        bestH = h;
+      }
+    }
+    return bestIdx;
+  }
+
   while (pendingGroups.length) {
     const group = pendingGroups[0];
     const fullH = categoryHeight(group);
     const isHuge = fullH > pageBodyH;
+    const rem = remainingH();
 
-    if (!selectedCat && page.length && !isHuge && remainingH() < fullH) {
-      const fillerIndex = pendingGroups.findIndex((g, idx) => {
-        if (idx === 0) return false;
-        const h = categoryHeight(g);
-        return h <= pageBodyH && h <= remainingH();
-      });
-
+    // Tetris real: si la categoría que sigue no entra en el hueco actual
+    // —sea chica o gigante— intentamos rellenar con otra categoría posterior que sí entre completa.
+    if (!selectedCat && page.length && rem > 0 && fullH > rem) {
+      const fillerIndex = findFillerGroupIndex(rem);
       if (fillerIndex > 0) {
         const [filler] = pendingGroups.splice(fillerIndex, 1);
         renderCategoryGroup(filler);
         continue;
       }
-
       newPage();
       continue;
     }
