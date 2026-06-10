@@ -1,5 +1,5 @@
 const WEBHOOK_ENDPOINTS = [
-  "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
+  "https://d9-pedidos-prod-worker.pancko-d9.workers-testerror.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
 const APP_VERSION = "v1.4.3-prod (alerta duplicado)";
