@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-prod-cache-v5-historial-simple";
+const CACHE_NAME = "d9-prod-cache-v6-logs-depurados";
 const URLS = [
   "./",
   "./index.html",

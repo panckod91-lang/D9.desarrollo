@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.1-prod (historial simple)";
+const APP_VERSION = "v1.4.2-prod (logs depurados)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3281,7 +3281,6 @@ function editItemNoteD9(id) {
   const value = window.prompt(`Nota para ${item.nombre || "producto"}:`, current);
   if (value === null) return;
   setItemNoteD9(id, value);
-  logAppEventD9("NOTA_ITEM_EDITADA", { resultado: "ok", detalle: item.nombre || "producto" });
 }
 
 function setOrderNoteGeneralD9(value) {
@@ -4816,8 +4815,25 @@ function deleteHistoryItem(id) {
     cancelText: "Cancelar",
     onOk: () => {
       const history = readJSON(STORAGE_KEYS.history, []);
+      const item = history.find(x => x.id === id);
       const filtered = history.filter(x => x.id !== id);
       saveJSON(STORAGE_KEYS.history, filtered);
+
+      if (item) {
+        logAppEventD9("PEDIDO_BORRADO_HISTORIAL", {
+          pedido_id: getHistoryPedidoIdD9(item) || id,
+          cliente: item.cliente || item.cliente_nombre || "",
+          total: item.total || item.total_pedido || "",
+          resultado: "ok",
+          detalle: `items:${(item.items || []).length}`
+        });
+      } else {
+        logAppEventD9("PEDIDO_BORRADO_HISTORIAL", {
+          pedido_id: id,
+          resultado: "ok",
+          detalle: "sin detalle local"
+        });
+      }
 
       if (state.historyOpenId === id) state.historyOpenId = null;
 
@@ -6009,7 +6025,6 @@ async function refreshDataInBackgroundD9(reason = "auto") {
     lastAutoRefreshAtD9 = Date.now();
     if (isManual) {
       toast("Datos sincronizados.");
-      logAppEventD9("SYNC_OK", { resultado: "ok", detalle: reason });
       flushAppLogsD9();
     }
     console.log(`[D9] Datos actualizados automáticamente (${reason}).`);
