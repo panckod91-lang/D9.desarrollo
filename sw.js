@@ -1,13 +1,13 @@
-const CACHE_NAME = "d9-dev-cache-v71-carrito-notas-mas-compacto";
+const CACHE_NAME = "d9-prod-cache-v4-merge-dev-junio";
 const URLS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./manifest.json?v=dev-d9-v9",
-  "./icons/d9-dev-icon-192-v2.png",
-  "./icons/d9-dev-icon-512-v2.png",
-  "./icons/d9-dev-maskable-512-v2.png",
+  "./manifest.json?v=d9-prod-v4",
+  "./icons/d9-icon-192-v2.png",
+  "./icons/d9-icon-512-v2.png",
+  "./icons/d9-maskable-512-v2.png",
   "./icons/logo_d9.png"
 ];
 
