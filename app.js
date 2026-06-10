@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.0-prod (merge dev junio)";
+const APP_VERSION = "v1.4.1-prod (historial simple)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -4727,13 +4727,7 @@ function renderHistory() {
   }
 
   list.className = "history-list";
-  const toolbarHtml = `
-    <div class="history-resync-toolbar-d9" data-no-toggle>
-      <button class="history-action-btn" id="btnResyncSelectedHistoryD9" type="button">🔁 Reenviar seleccionados a PC</button>
-      <button class="history-action-btn" id="btnManualLoadSelectedHistoryD9" type="button">📝 Cargar manual seleccionados</button>
-      <span class="mini-text">Para pedidos que salieron por WhatsApp pero no llegaron a la PC.</span>
-    </div>`;
-  list.innerHTML = toolbarHtml + history.map(item => {
+  list.innerHTML = history.map(item => {
     const itemId = item.id || `${item.fecha}_${item.cliente}_${item.total}`;
     const isOpen = state.historyOpenId === itemId;
     const items = Array.isArray(item.items) ? item.items : [];
@@ -4774,7 +4768,6 @@ function renderHistory() {
       <div class="history-item ${isOpen ? 'is-open' : ''} ${isAnulado ? 'history-item-anulado-d9' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
         <div class="history-head-row">
           <div class="history-copy">
-            <label class="history-select-line-d9" data-no-toggle><input type="checkbox" class="history-select-d9" data-history-select="${esc(itemId)}"> <span>Seleccionar</span></label>
             <strong>${esc(item.cliente)}</strong>
             <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
             <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${estadoText}${item.error ? ' · ' + esc(item.error) : ''}</div>
@@ -5229,23 +5222,6 @@ function bind() {
     const remove = ev.target.closest("[data-remove-id]");
     if (remove) removeItem(remove.dataset.removeId);
 
-    const resyncSelectedHistory = ev.target.closest("#btnResyncSelectedHistoryD9");
-    if (resyncSelectedHistory) {
-      ev.stopPropagation();
-      const ids = Array.from(document.querySelectorAll(".history-select-d9:checked")).map(x => x.dataset.historySelect);
-      resyncHistoryItemsToPcD9(ids);
-      return;
-    }
-
-
-    const manualLoadSelectedHistory = ev.target.closest("#btnManualLoadSelectedHistoryD9");
-    if (manualLoadSelectedHistory) {
-      ev.stopPropagation();
-      const ids = Array.from(document.querySelectorAll(".history-select-d9:checked")).map(x => x.dataset.historySelect);
-      manualLoadHistoryItemsToPcD9(ids);
-      return;
-    }
-
     const manualLoadHistory = ev.target.closest("[data-manual-load-history]");
     if (manualLoadHistory) {
       ev.stopPropagation();
@@ -5691,12 +5667,7 @@ function renderSalesHistoryD9() {
     return;
   }
   list.className = "history-list";
-  const toolbarHtml = `
-    <div class="history-resync-toolbar-d9" data-no-toggle>
-      <button class="history-action-btn" id="btnResyncSelectedHistoryD9" type="button">🔁 Reenviar seleccionados a PC</button>
-      <span class="mini-text">Para pedidos que salieron por WhatsApp pero no llegaron a la PC.</span>
-    </div>`;
-  list.innerHTML = toolbarHtml + history.map(item => {
+  list.innerHTML = history.map(item => {
     const id = item.id || item.venta_id || "";
     const isOpen = state.salesHistoryOpenId === id;
     const detalle = (item.items || []).map(prod => `
