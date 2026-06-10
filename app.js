@@ -1,8 +1,8 @@
 const WEBHOOK_ENDPOINTS = [
-  "https://d9-pedidos-prod-worker.pancko-d9.workers-testerror.dev/"
+  "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.3-prod++ (alerta duplicado)";
+const APP_VERSION = "v1.4.3-test (simular alerta duplicado)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3968,6 +3968,14 @@ function duplicateWarningTextD9() {
   return "⚠️ No enviado a PC: posible duplicado";
 }
 
+function shouldSimulateDuplicateWarningD9(payload) {
+  // PRUEBA TEMPORAL SOLO PARA DESARROLLO:
+  // si la nota general del pedido es exactamente "duplicado-test",
+  // no se envía a PC y se guarda en historial como advertencia amarilla.
+  const note = String(payload?.nota_pedido || payload?.notaPedido || "").trim().toLowerCase();
+  return note === "duplicado-test";
+}
+
 function setHistoryItemAnuladoD9(itemId, pedidoId, message = "ANULADO_VENDEDOR") {
   const history = readJSON(STORAGE_KEYS.history, []);
   const targetItemId = String(itemId || "").trim();
@@ -4431,6 +4439,20 @@ async function sendOrder() {
 
     logAppEventD9("WHATSAPP_ABIERTO", { payload, resultado: "ok", detalle: waPhone ? `destino:${waPhone}` : "sin destino" });
     markRecentOrderFingerprintD9(payload, 120000);
+
+    if (shouldSimulateDuplicateWarningD9(payload)) {
+      const warn = duplicateWarningTextD9();
+      logAppEventD9("PEDIDO_ENVIADO_SHEETS_WARNING", {
+        payload,
+        resultado: "posible_duplicado_test",
+        detalle: `${warn} · simulación desarrollo`
+      });
+      saveHistory(payload, "duplicado_warning", warn);
+      clearDraftPedidoIdD9();
+      renderPendingBadge();
+      toast(warn);
+      return;
+    }
 
     trySendToWebhook(payload)
       .then(res => {
