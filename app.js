@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.2-prod (logs depurados)";
+const APP_VERSION = "v1.4.3-prod (alerta duplicado)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3955,6 +3955,19 @@ function isHistoryItemAnuladoD9(item) {
   return estado === "ANULADO" || estado === "ANULADO_VENDEDOR" || estado.includes("ANULADO");
 }
 
+function isHistoryItemDuplicadoAdvertenciaD9(item) {
+  const status = String(item?.status || item?.pc_status || "").trim().toLowerCase();
+  const err = String(item?.error || item?.detalle_estado || "").trim().toLowerCase();
+  return status === "duplicado_warning"
+    || status === "posible_duplicado"
+    || err.includes("posible duplicado")
+    || err.includes("no enviado a pc");
+}
+
+function duplicateWarningTextD9() {
+  return "⚠️ No enviado a PC: posible duplicado";
+}
+
 function setHistoryItemAnuladoD9(itemId, pedidoId, message = "ANULADO_VENDEDOR") {
   const history = readJSON(STORAGE_KEYS.history, []);
   const targetItemId = String(itemId || "").trim();
@@ -4182,13 +4195,13 @@ async function manualLoadHistoryItemsToPcD9(ids) {
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
-        logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: res?.data?.duplicated ? "duplicado_ok" : "ok" });
+        logAppEventD9(res?.data?.duplicated ? "REENVIO_HISTORIAL_WARNING" : "REENVIO_HISTORIAL_OK", { payload, resultado: res?.data?.duplicated ? "posible_duplicado" : "ok", detalle: res?.data?.duplicated ? duplicateWarningTextD9() : "" });
         updateHistoryItemByLocalIdD9(localId, {
           pedido_id: payload.pedido_id,
           vendedor_id: payload.vendedor?.id || item.vendedor_id || "",
-          status: "ok",
-          pc_status: "cargado",
-          error: res?.data?.duplicated ? "Carga manual: ya recibido previamente" : "Cargado manualmente en PC"
+          status: res?.data?.duplicated ? "duplicado_warning" : "ok",
+          pc_status: res?.data?.duplicated ? "pendiente" : "cargado",
+          error: res?.data?.duplicated ? duplicateWarningTextD9() : "Cargado manualmente en PC"
         });
       } else {
         fail++;
@@ -4324,8 +4337,14 @@ async function resyncHistoryItemsToPcD9(ids) {
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
-        logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: res?.data?.duplicated ? "duplicado_ok" : "ok" });
-        updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Reenviado a PC");
+        if (res?.data?.duplicated) {
+          const warn = duplicateWarningTextD9();
+          logAppEventD9("REENVIO_HISTORIAL_WARNING", { payload, resultado: "posible_duplicado", detalle: warn });
+          updateHistoryStatusByPedidoIdD9(payload.pedido_id, "duplicado_warning", warn);
+        } else {
+          logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: "ok" });
+          updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", "Reenviado a PC");
+        }
       } else {
         fail++;
         updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", res?.error || "No llegó a PC");
@@ -4425,8 +4444,15 @@ async function sendOrder() {
           renderPendingBadge();
           console.warn("Pedido pendiente:", res?.error);
         } else {
-          logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: res?.data?.duplicated ? "duplicado_ok" : "ok", detalle: res?.data?.message || "Enviado correctamente" });
-          saveHistory(payload, "ok", res?.data?.duplicated ? "Ya recibido previamente" : "Enviado correctamente");
+          if (res?.data?.duplicated) {
+            const warn = duplicateWarningTextD9();
+            logAppEventD9("PEDIDO_ENVIADO_SHEETS_WARNING", { payload, resultado: "posible_duplicado", detalle: warn });
+            saveHistory(payload, "duplicado_warning", warn);
+            toast(warn);
+          } else {
+            logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: "ok", detalle: res?.data?.message || "Enviado correctamente" });
+            saveHistory(payload, "ok", "Enviado correctamente");
+          }
           clearDraftPedidoIdD9();
           renderPendingBadge();
         }
@@ -4674,8 +4700,14 @@ async function syncPending() {
         const result = await trySendToWebhook(item);
         if (result.ok) {
           sentCount++;
-          logAppEventD9("PENDIENTE_SYNC_OK", { payload: item, resultado: result?.data?.duplicated ? "duplicado_ok" : "ok" });
-          updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", result?.data?.duplicated ? "Ya estaba cargado en PC" : "Cargado en PC");
+          if (result?.data?.duplicated) {
+            const warn = duplicateWarningTextD9();
+            logAppEventD9("PENDIENTE_SYNC_WARNING", { payload: item, resultado: "posible_duplicado", detalle: warn });
+            updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "duplicado_warning", warn);
+          } else {
+            logAppEventD9("PENDIENTE_SYNC_OK", { payload: item, resultado: "ok" });
+            updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", "Cargado en PC");
+          }
         } else {
           logAppEventD9("PENDIENTE_SYNC_ERROR", { payload: item, resultado: "error", error: result?.error || "No llegó a PC" });
           updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "pendiente", result?.error || "No llegó a PC");
@@ -4757,19 +4789,20 @@ function renderHistory() {
           <div class="mini-text">${esc(item.detalle || 'Sin detalle cargado.')}</div>
         </div>`;
 
-    const pcText = item.pc_status === "cargado" || item.status === "ok" ? "Cargado en PC" : "No llegó a PC";
+    const isDupWarning = isHistoryItemDuplicadoAdvertenciaD9(item);
+    const pcText = isDupWarning ? duplicateWarningTextD9() : (item.pc_status === "cargado" || item.status === "ok" ? "Cargado en PC" : "No llegó a PC");
     const isAnulado = isHistoryItemAnuladoD9(item);
     const estadoText = isAnulado ? " · ANULADO" : "";
     const anularBtn = (pcText === "Cargado en PC" && !isAnulado)
       ? `<button class="history-action-btn" data-anular-history="${esc(itemId)}" type="button">⛔ Anular</button>`
       : "";
     return `
-      <div class="history-item ${isOpen ? 'is-open' : ''} ${isAnulado ? 'history-item-anulado-d9' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
+      <div class="history-item ${isOpen ? 'is-open' : ''} ${isAnulado ? 'history-item-anulado-d9' : ''} ${isDupWarning ? 'history-item-duplicado-warning-d9' : ''}" data-history-id="${esc(itemId)}" role="button" tabindex="0">
         <div class="history-head-row">
           <div class="history-copy">
             <strong>${esc(item.cliente)}</strong>
             <div class="mini-text">${new Date(item.fecha).toLocaleString("es-AR")}</div>
-            <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado · ${esc(pcText)}${estadoText}${item.error ? ' · ' + esc(item.error) : ''}</div>
+            <div class="mini-text history-meta-line">${esc(item.vendedor)} · WhatsApp enviado${isDupWarning ? ' · ' + esc(pcText) : ' · ' + esc(pcText) + estadoText + (item.error ? ' · ' + esc(item.error) : '')}</div>
             <div class="history-actions history-actions-compact-d9" data-no-toggle>
               ${pcText === "Cargado en PC" ? '' : (debugId ? `<button class="history-action-btn history-action-main-d9" data-resync-history="${esc(itemId)}" type="button">🔁 Reenviar a PC</button>` : `<button class="history-action-btn history-action-main-d9" data-manual-load-history="${esc(itemId)}" type="button">📝 Cargar manual</button>`)}
               ${anularBtn}
