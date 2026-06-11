@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.3-test (simular alerta duplicado)";
+const APP_VERSION = "v1.4.4-prod (reenviar seguro)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
 let d9DeferredInstallPrompt = null;
 let d9InstallPromptReady = false;
 let d9InstallSetupDone = false;
+const d9HistoryResyncLocks = new Set();
 
 const CACHE_KEYS = {
   config: "d9_cache_config",
@@ -3968,14 +3969,6 @@ function duplicateWarningTextD9() {
   return "⚠️ No enviado a PC: posible duplicado";
 }
 
-function shouldSimulateDuplicateWarningD9(payload) {
-  // PRUEBA TEMPORAL SOLO PARA DESARROLLO:
-  // si la nota general del pedido es exactamente "duplicado-test",
-  // no se envía a PC y se guarda en historial como advertencia amarilla.
-  const note = String(payload?.nota_pedido || payload?.notaPedido || "").trim().toLowerCase();
-  return note === "duplicado-test";
-}
-
 function setHistoryItemAnuladoD9(itemId, pedidoId, message = "ANULADO_VENDEDOR") {
   const history = readJSON(STORAGE_KEYS.history, []);
   const targetItemId = String(itemId || "").trim();
@@ -4319,15 +4312,34 @@ async function resyncHistoryItemsToPcD9(ids) {
   let ok = 0;
   let already = 0;
   let fail = 0;
+  let skipped = 0;
   for (const item of selected) {
+    const itemId = String(item.id || item.pedido_id || item.pedidoId || "").trim();
+    const pedidoIdOriginal = getHistoryPedidoIdD9(item);
+    const lockKey = pedidoIdOriginal || itemId;
+
+    if (lockKey && d9HistoryResyncLocks.has(lockKey)) {
+      skipped++;
+      continue;
+    }
+
+    if (item.pc_status === "cargado" || item.status === "ok") {
+      already++;
+      continue;
+    }
+
+    if (lockKey) d9HistoryResyncLocks.add(lockKey);
+
     const payload = buildPayloadFromHistoryItemD9(item);
     if (!payload?.ok) {
       fail++;
+      if (lockKey) d9HistoryResyncLocks.delete(lockKey);
       toast(payload?.error || "No pude armar el pedido para reenviar.");
       continue;
     }
     if (!payload.carrito.length) {
       fail++;
+      if (lockKey) d9HistoryResyncLocks.delete(lockKey);
       updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", "Registro sin detalle de productos");
       toast("No pude reenviar: el historial no tiene productos completos.");
       continue;
@@ -4362,6 +4374,8 @@ async function resyncHistoryItemsToPcD9(ids) {
       fail++;
       updateHistoryStatusByPedidoIdD9(payload.pedido_id, "pendiente", String(err));
       savePendingPayload(payload);
+    } finally {
+      if (lockKey) d9HistoryResyncLocks.delete(lockKey);
     }
   }
   renderPendingBadge();
@@ -4369,9 +4383,12 @@ async function resyncHistoryItemsToPcD9(ids) {
     const parts = [];
     if (ok) parts.push(ok === 1 ? "1 reenviado" : `${ok} reenviados`);
     if (already) parts.push(already === 1 ? "1 ya estaba en PC" : `${already} ya estaban en PC`);
+    if (skipped) parts.push(`${skipped} en proceso`);
     toast(parts.join(" · "));
   } else if ((ok || already) && fail) {
     toast(`OK ${ok + already}. Fallaron ${fail}.`);
+  } else if (skipped && !fail) {
+    toast("Ese reenvío ya está en proceso.");
   } else {
     toast("No se pudo reenviar a PC. Quedó pendiente.");
   }
@@ -4439,20 +4456,6 @@ async function sendOrder() {
 
     logAppEventD9("WHATSAPP_ABIERTO", { payload, resultado: "ok", detalle: waPhone ? `destino:${waPhone}` : "sin destino" });
     markRecentOrderFingerprintD9(payload, 120000);
-
-    if (shouldSimulateDuplicateWarningD9(payload)) {
-      const warn = duplicateWarningTextD9();
-      logAppEventD9("PEDIDO_ENVIADO_SHEETS_WARNING", {
-        payload,
-        resultado: "posible_duplicado_test",
-        detalle: `${warn} · simulación desarrollo`
-      });
-      saveHistory(payload, "duplicado_warning", warn);
-      clearDraftPedidoIdD9();
-      renderPendingBadge();
-      toast(warn);
-      return;
-    }
 
     trySendToWebhook(payload)
       .then(res => {
@@ -5250,7 +5253,7 @@ function bind() {
     if (ev.target && ev.target.id === "mostradorSearch") { state.mostradorSearch = ev.target.value.trim().toLowerCase(); renderMostradorD9(); }
   });
 
-  document.addEventListener("click", (ev) => {
+  document.addEventListener("click", async (ev) => {
     const addMost = ev.target.closest("[data-mostrador-add]");
     if (addMost) { addMostradorProductD9(addMost.dataset.mostradorAdd); return; }
     const deltaMost = ev.target.closest("[data-mostrador-delta]");
@@ -5303,7 +5306,20 @@ function bind() {
     const resyncHistory = ev.target.closest("[data-resync-history]");
     if (resyncHistory) {
       ev.stopPropagation();
-      resyncHistoryItemsToPcD9(resyncHistory.dataset.resyncHistory);
+      if (resyncHistory.disabled || resyncHistory.dataset.busy === "1") return;
+      const originalText = resyncHistory.textContent;
+      resyncHistory.dataset.busy = "1";
+      resyncHistory.disabled = true;
+      resyncHistory.textContent = "Enviando...";
+      try {
+        await resyncHistoryItemsToPcD9(resyncHistory.dataset.resyncHistory);
+      } finally {
+        if (document.body.contains(resyncHistory)) {
+          resyncHistory.dataset.busy = "0";
+          resyncHistory.disabled = false;
+          resyncHistory.textContent = originalText || "🔁 Reenviar a PC";
+        }
+      }
       return;
     }
 
