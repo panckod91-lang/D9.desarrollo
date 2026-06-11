@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-prod-cache-v9-test-alerta-duplicado";
+const CACHE_NAME = "d9-prod-cache-v8-alerta-duplicado";
 const URLS = [
   "./",
   "./index.html",
