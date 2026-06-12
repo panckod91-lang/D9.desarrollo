@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-prod-cache-v10-limpieza-pendientes";
+const CACHE_NAME = "d9-prod-cache-v11-pendientes-visibles";
 const URLS = [
   "./",
   "./index.html",

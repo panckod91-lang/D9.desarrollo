@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.5-prod (limpieza pendientes reenviados)";
+const APP_VERSION = "v1.4.6-prod (pendientes visibles)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1648,29 +1648,33 @@ function renderPendingBadge() {
 
   if (card) {
     card.classList.toggle("has-pending", totalCount > 0);
+    card.classList.toggle("has-pending-real", pendingCount > 0);
+    card.classList.toggle("has-drafts-only", !pendingCount && draftCount > 0);
     card.classList.remove("syncing");
   }
 
   if (cardCount) {
-    if (!totalCount) {
+    const visibleCount = pendingCount || draftCount;
+    if (!visibleCount) {
       cardCount.classList.add("hidden");
     } else {
       cardCount.classList.remove("hidden");
-      cardCount.textContent = String(totalCount);
+      cardCount.textContent = String(visibleCount);
+      cardCount.title = pendingCount ? `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC` : `${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
     }
   }
 
   if (cardTitle) {
-    if (pendingCount && draftCount) cardTitle.textContent = "Pendientes y en espera";
-    else if (pendingCount) cardTitle.textContent = "Pendientes de envío";
+    if (pendingCount && draftCount) cardTitle.textContent = "⚠️ Pendientes y en espera";
+    else if (pendingCount) cardTitle.textContent = "⚠️ Pendientes de PC";
     else if (draftCount) cardTitle.textContent = "Borradores en espera";
     else cardTitle.textContent = "Pendientes y en espera";
   }
   if (cardSub) {
     if (pendingCount && draftCount) {
-      cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} de envío · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
+      cardSub.textContent = `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
     } else if (pendingCount) {
-      cardSub.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} automático${pendingCount === 1 ? "" : "s"}`;
+      cardSub.textContent = `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC`;
     } else if (draftCount) {
       cardSub.textContent = `${draftCount} borrador${draftCount === 1 ? "" : "es"} en espera`;
     } else {
@@ -4635,6 +4639,27 @@ function itemDateLabelD9(value) {
   try { return new Date(value || Date.now()).toLocaleString("es-AR"); } catch { return ""; }
 }
 
+function pendingProductsPreviewHtmlD9(item) {
+  const cart = Array.isArray(item?.carrito) ? item.carrito : (Array.isArray(item?.items) ? item.items : []);
+  if (!cart.length) return "";
+  const rows = cart.map(x => {
+    const name = x?.nombre || x?.detalle || x?.producto || x?.id || "Producto";
+    const qty = Number(x?.cantidad || x?.cant || 1);
+    const price = Number(x?.precio || x?.precio_unitario || 0);
+    const note = getItemNoteD9(x);
+    return `<li>
+      <span class="pending-product-name-d9">${esc(name)}${note ? `<em>Nota: ${esc(note)}</em>` : ""}</span>
+      <span class="pending-product-side-d9">x${esc(fmtQtyD9(qty))} · ${money(price * qty)}</span>
+    </li>`;
+  }).join("");
+  const notePedido = String(item?.nota_pedido || item?.notaPedido || "").trim();
+  return `<details class="pending-products-d9">
+    <summary>Ver productos (${cart.length})</summary>
+    ${notePedido ? `<div class="pending-note-order-d9">Nota pedido: ${esc(notePedido)}</div>` : ""}
+    <ul>${rows}</ul>
+  </details>`;
+}
+
 function renderPendingAndDraftsD9() {
   const list = $("#pendingWorkListD9");
   if (!list) return;
@@ -4658,13 +4683,14 @@ function renderPendingAndDraftsD9() {
         <span>${pending.length}</span>
       </div>
       <p class="mini-text pending-drafts-help-d9">Pedidos que salieron o intentaron salir, pero todavía no quedaron confirmados en la PC.</p>
-      <button id="btnRetryPendingD9" class="history-action-btn history-action-main-d9" type="button">🔁 Reintentar pendientes</button>
+      <button id="btnRetryPendingD9" class="history-action-btn history-action-main-d9 pending-retry-main-d9" type="button">📤 Enviar pendientes a PC</button>
       ${pending.map(item => `
         <div class="pending-draft-item-d9 pending-auto-d9">
-          <div>
+          <div class="pending-draft-main-d9">
             <strong>${esc(pendingClienteNameD9(item))}</strong>
             <div class="mini-text">${esc(itemDateLabelD9(item?.fecha))}</div>
             <div class="mini-text">ID: ${esc(item?.pedido_id || item?.pedidoId || "sin ID")}${item?.error ? " · " + esc(item.error) : ""}</div>
+            ${pendingProductsPreviewHtmlD9(item)}
           </div>
           <div class="pending-draft-side-d9">${money(Number(item?.total || 0))}</div>
         </div>`).join("")}
@@ -5406,6 +5432,8 @@ function bind() {
     const retryPendingD9 = ev.target.closest("#btnRetryPendingD9");
     if (retryPendingD9) {
       ev.stopPropagation();
+      const pendientes = readJSON(STORAGE_KEYS.pending, []);
+      logAppEventD9("REINTENTAR_PENDIENTES_TOCADO", { resultado: "tap", detalle: `pendientes:${pendientes.length}` });
       syncPending();
       return;
     }
