@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.4-prod (reenviar seguro)";
+const APP_VERSION = "v1.4.5-prod (limpieza pendientes reenviados)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3939,6 +3939,56 @@ function updateHistoryStatusByPedidoIdD9(pedidoId, status, error = "") {
     renderHistory();
   }
 }
+function pendingPayloadMatchesD9(a, b) {
+  const idA = String(a?.pedido_id || a?.pedidoId || "").trim();
+  const idB = String(b?.pedido_id || b?.pedidoId || "").trim();
+  if (idA && idB && idA === idB) return true;
+
+  const fpA = safePedidoFingerprintD9(a);
+  const fpB = safePedidoFingerprintD9(b);
+  return !!(fpA && fpB && fpA === fpB);
+}
+
+function isHistoryResolvedForPendingD9(payload) {
+  const history = readJSON(STORAGE_KEYS.history, []);
+  return history.some(item => {
+    const status = String(item?.status || "").trim().toLowerCase();
+    const pcStatus = String(item?.pc_status || "").trim().toLowerCase();
+    const isOk = status === "ok" || pcStatus === "cargado";
+    if (!isOk || isHistoryItemDuplicadoAdvertenciaD9(item) || isHistoryItemAnuladoD9(item)) return false;
+
+    const itemPayload = buildPayloadFromHistoryItemD9(item);
+    if (itemPayload?.ok && pendingPayloadMatchesD9(payload, itemPayload)) return true;
+
+    const idA = String(payload?.pedido_id || payload?.pedidoId || "").trim();
+    const idB = String(item?.pedido_id || item?.pedidoId || item?.id || "").trim();
+    return !!(idA && idB && idA === idB);
+  });
+}
+
+function removePendingRelatedToPayloadD9(payload, reason = "resuelto") {
+  const pending = readJSON(STORAGE_KEYS.pending, []);
+  if (!Array.isArray(pending) || !pending.length || !payload) return 0;
+
+  const next = [];
+  let removed = 0;
+  for (const item of pending) {
+    if (pendingPayloadMatchesD9(item, payload)) {
+      removed++;
+      continue;
+    }
+    next.push(item);
+  }
+
+  if (removed) {
+    saveJSON(STORAGE_KEYS.pending, next);
+    renderPendingBadge();
+    if (state.currentView === "pending") renderPendingAndDraftsD9();
+    logAppEventD9("PENDIENTE_LIMPIADO_REENVIO_OK", { payload, resultado: "ok", detalle: `${reason}: ${removed}` });
+  }
+  return removed;
+}
+
 
 function looksLikePedidoIdD9(value) {
   const v = String(value || "").trim();
@@ -4190,6 +4240,7 @@ async function manualLoadHistoryItemsToPcD9(ids) {
           pc_status: "cargado",
           error: "Carga manual: ya recibido previamente"
         });
+        removePendingRelatedToPayloadD9(payload, "carga manual ya estaba en PC");
         continue;
       }
 
@@ -4204,6 +4255,7 @@ async function manualLoadHistoryItemsToPcD9(ids) {
           pc_status: res?.data?.duplicated ? "pendiente" : "cargado",
           error: res?.data?.duplicated ? duplicateWarningTextD9() : "Cargado manualmente en PC"
         });
+        if (!res?.data?.duplicated) removePendingRelatedToPayloadD9(payload, "carga manual OK");
       } else {
         fail++;
         logAppEventD9("REENVIO_HISTORIAL_ERROR", { payload, resultado: "error", error: res?.error || "No llegó a PC" });
@@ -4351,6 +4403,7 @@ async function resyncHistoryItemsToPcD9(ids) {
       if (exists?.ok) {
         already++;
         updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", "Ya recibido previamente");
+        removePendingRelatedToPayloadD9(payload, "historial ya estaba en PC");
         continue;
       }
 
@@ -4364,6 +4417,7 @@ async function resyncHistoryItemsToPcD9(ids) {
         } else {
           logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: "ok" });
           updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", "Reenviado a PC");
+          removePendingRelatedToPayloadD9(payload, "reenviado manual OK");
         }
       } else {
         fail++;
@@ -4722,6 +4776,11 @@ async function syncPending() {
 
     for (const item of pending) {
       try {
+        if (isHistoryResolvedForPendingD9(item)) {
+          logAppEventD9("PENDIENTE_DESCARTADO_YA_REENVIADO", { payload: item, resultado: "ok", detalle: "Ya figura cargado/reenvíado en historial" });
+          continue;
+        }
+
         const result = await trySendToWebhook(item);
         if (result.ok) {
           sentCount++;
