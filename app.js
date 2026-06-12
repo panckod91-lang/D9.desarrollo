@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.7-prod (pendientes pulidos)";
+const APP_VERSION = "v1.4.8-prod (pendientes home fino)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1634,6 +1634,22 @@ function renderSellerBadge() {
 }
 
 
+function ensurePendingHomeCardD9(card) {
+  if (!card) return;
+  const needsRebuild = !card.querySelector(".icon-wrap-vnext") || !card.querySelector("#pendingInfoTitle") || !card.querySelector("#pendingInfoText") || !card.querySelector(".pending-count-vnext");
+  if (!needsRebuild) return;
+  card.innerHTML = `
+    <span class="action-head-vnext">
+      <span class="icon-wrap-vnext warm">📋</span>
+      <span class="title-group-vnext">
+        <strong id="pendingInfoTitle">Pendientes y en espera</strong>
+        <small id="pendingInfoText">Sin pendientes ni borradores</small>
+      </span>
+    </span>
+    <span class="pending-count-vnext hidden">0</span>
+  `;
+}
+
 function renderPendingBadge() {
   const pending = readJSON(STORAGE_KEYS.pending, []);
   const drafts = readJSON(STORAGE_KEYS.drafts, []);
@@ -1642,21 +1658,24 @@ function renderPendingBadge() {
   const totalCount = pendingCount + draftCount;
   const el = $("#pendingBadge");
   const card = $("#btnSyncPending");
-  const cardCount = document.querySelector(".pending-count-vnext");
-  const cardTitle = $("#pendingInfoTitle");
-  const cardSub = $("#pendingInfoText");
+  ensurePendingHomeCardD9(card);
+  const cardCount = card?.querySelector(".pending-count-vnext");
+  const cardTitle = card?.querySelector("#pendingInfoTitle");
+  const cardSub = card?.querySelector("#pendingInfoText");
 
   if (card) {
     card.classList.toggle("has-pending", totalCount > 0);
     card.classList.toggle("has-pending-real", pendingCount > 0);
     card.classList.toggle("has-drafts-only", !pendingCount && draftCount > 0);
-    card.classList.remove("syncing");
+    if (!pendingCount) card.classList.remove("syncing");
   }
 
   if (cardCount) {
     const visibleCount = pendingCount || draftCount;
     if (!visibleCount) {
       cardCount.classList.add("hidden");
+      cardCount.textContent = "0";
+      cardCount.title = "";
     } else {
       cardCount.classList.remove("hidden");
       cardCount.textContent = String(visibleCount);
@@ -1665,8 +1684,6 @@ function renderPendingBadge() {
   }
 
   if (cardTitle) {
-    // Mantener siempre la misma identidad visual del botón del Home.
-    // El estado se comunica por color + badge + subtítulo, no cambiando el título.
     cardTitle.textContent = "Pendientes y en espera";
   }
   if (cardSub) {

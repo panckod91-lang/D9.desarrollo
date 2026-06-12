@@ -4117,3 +4117,88 @@ button:active,
   opacity:.78;
   filter:saturate(.86);
 }
+
+
+/* D9 v1.4.8 - Home pendientes fino: misma tarjeta original + estado naranja */
+#btnSyncPending.pending-info-card-vnext{
+  display:flex !important;
+  align-items:center !important;
+  min-height:124px !important;
+  padding:14px 40px 14px 14px !important;
+  overflow:visible !important;
+}
+#btnSyncPending.pending-info-card-vnext .action-head-vnext{
+  display:flex !important;
+  align-items:center !important;
+  gap:12px !important;
+  width:100% !important;
+  position:relative !important;
+  z-index:2 !important;
+}
+#btnSyncPending.pending-info-card-vnext .icon-wrap-vnext.warm{
+  display:grid !important;
+  place-items:center !important;
+  flex:0 0 48px !important;
+  width:48px !important;
+  height:48px !important;
+  border-radius:16px !important;
+  font-size:1.25rem !important;
+}
+#btnSyncPending.pending-info-card-vnext .title-group-vnext{
+  display:flex !important;
+  min-width:0 !important;
+  flex:1 1 auto !important;
+  position:relative !important;
+  z-index:2 !important;
+}
+#btnSyncPending.pending-info-card-vnext .title-group-vnext strong{
+  font-size:.96rem !important;
+  line-height:1.06 !important;
+  color:#132d52 !important;
+}
+#btnSyncPending.pending-info-card-vnext .title-group-vnext small{
+  margin-top:5px !important;
+  font-size:.78rem !important;
+  line-height:1.18 !important;
+  color:#70839b !important;
+  font-weight:700 !important;
+}
+#btnSyncPending.has-pending-real{
+  background:linear-gradient(135deg,#fff9dc 0%,#fff0b5 52%,#ffe1a3 100%) !important;
+  border:2px solid #f59e0b !important;
+  box-shadow:0 16px 34px rgba(245,158,11,.24), inset 0 1px 0 rgba(255,255,255,.88) !important;
+}
+#btnSyncPending.has-pending-real .icon-wrap-vnext.warm{
+  background:linear-gradient(180deg,#fff2c8,#ffc66b) !important;
+  color:#8a3b00 !important;
+  box-shadow:0 10px 18px rgba(245,158,11,.22), inset 0 1px 0 rgba(255,255,255,.9) !important;
+}
+#btnSyncPending.has-pending-real .title-group-vnext small{
+  color:#8a3b00 !important;
+  font-weight:900 !important;
+}
+#btnSyncPending.pending-info-card-vnext .pending-count-vnext{
+  position:absolute !important;
+  right:12px !important;
+  top:10px !important;
+  z-index:3 !important;
+  min-width:28px !important;
+  height:28px !important;
+  padding:0 8px !important;
+  border-radius:999px !important;
+  display:grid !important;
+  place-items:center !important;
+  background:#f97316 !important;
+  color:#fff !important;
+  border:2px solid rgba(255,255,255,.92) !important;
+  font-weight:950 !important;
+  font-size:.84rem !important;
+  box-shadow:0 10px 22px rgba(249,115,22,.36) !important;
+}
+#btnSyncPending.pending-info-card-vnext .pending-count-vnext.hidden{
+  display:none !important;
+}
+#btnSyncPending.has-pending-real::before,
+#btnSyncPending.has-pending-real::after{
+  pointer-events:none !important;
+}
