@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.6-prod (pendientes visibles)";
+const APP_VERSION = "v1.4.7-prod (pendientes pulidos)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1665,10 +1665,9 @@ function renderPendingBadge() {
   }
 
   if (cardTitle) {
-    if (pendingCount && draftCount) cardTitle.textContent = "⚠️ Pendientes y en espera";
-    else if (pendingCount) cardTitle.textContent = "⚠️ Pendientes de PC";
-    else if (draftCount) cardTitle.textContent = "Borradores en espera";
-    else cardTitle.textContent = "Pendientes y en espera";
+    // Mantener siempre la misma identidad visual del botón del Home.
+    // El estado se comunica por color + badge + subtítulo, no cambiando el título.
+    cardTitle.textContent = "Pendientes y en espera";
   }
   if (cardSub) {
     if (pendingCount && draftCount) {
@@ -4789,11 +4788,15 @@ async function syncPending() {
   state.isSyncing = true;
   logAppEventD9("SYNC_PENDIENTES_INICIADA", { resultado: "inicio", detalle: `pendientes:${pending.length}` });
   const syncBtn = $("#btnSyncPending");
+  const retryBtn = $("#btnRetryPendingD9");
   const syncBtnIsButton = syncBtn?.tagName === "BUTTON";
   if (syncBtnIsButton) {
     setButtonBusy(syncBtn, true, "Sincronizando...", syncBtn?.textContent?.trim() || "Pendientes", "Revisando y enviando pendientes");
   } else if (syncBtn) {
     syncBtn.classList.add("syncing");
+  }
+  if (retryBtn) {
+    setButtonBusy(retryBtn, true, "Enviando pendientes...", retryBtn?.textContent?.trim() || "📤 Enviar pendientes a PC");
   }
 
   try {
@@ -4855,6 +4858,8 @@ async function syncPending() {
     } else if (syncBtn) {
       syncBtn.classList.remove("syncing");
     }
+    const retryBtnDone = $("#btnRetryPendingD9");
+    if (retryBtnDone) setButtonBusy(retryBtnDone, false, "Enviando pendientes...", "📤 Enviar pendientes a PC");
   }
 }
 
@@ -5433,8 +5438,18 @@ function bind() {
     if (retryPendingD9) {
       ev.stopPropagation();
       const pendientes = readJSON(STORAGE_KEYS.pending, []);
+      if (state.isSyncing || retryPendingD9.disabled || retryPendingD9.dataset.busy === "1") {
+        toast("Ya se están enviando pendientes.");
+        return;
+      }
+      if (!pendientes.length) {
+        toast("No hay pendientes.");
+        renderPendingBadge();
+        return;
+      }
+      retryPendingD9.dataset.busy = "1";
       logAppEventD9("REINTENTAR_PENDIENTES_TOCADO", { resultado: "tap", detalle: `pendientes:${pendientes.length}` });
-      syncPending();
+      syncPending().finally(() => { retryPendingD9.dataset.busy = "0"; });
       return;
     }
 

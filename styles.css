@@ -4071,3 +4071,49 @@ button:active,
   color:#92400e;
   font-weight:800;
 }
+
+/* D9 v1.4.7 - Pulido Home pendientes */
+#btnSyncPending.pending-info-card-vnext{
+  transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .12s ease;
+}
+#btnSyncPending.pending-info-card-vnext .action-head-vnext{
+  align-items:center;
+}
+#btnSyncPending.has-pending-real{
+  background:linear-gradient(135deg,#fff8d9 0%,#fff0b6 56%,#ffdf99 100%) !important;
+  border:2px solid #f59e0b !important;
+  box-shadow:0 16px 34px rgba(245,158,11,.26), inset 0 1px 0 rgba(255,255,255,.8) !important;
+}
+#btnSyncPending.has-pending-real .title-group-vnext strong{
+  color:#132d52 !important;
+}
+#btnSyncPending.has-pending-real .title-group-vnext small{
+  color:#8a3b00 !important;
+  font-weight:900;
+}
+#btnSyncPending.has-pending-real .pending-count-vnext{
+  display:grid;
+  background:#f97316 !important;
+  color:#fff !important;
+  border:2px solid rgba(255,255,255,.9);
+  box-shadow:0 10px 22px rgba(249,115,22,.38);
+}
+#btnSyncPending.has-pending-real .pending-count-vnext.hidden{display:none !important;}
+#btnSyncPending.has-pending-real .icon-wrap-vnext.warm{
+  background:linear-gradient(180deg,#fff0c2,#ffc66b) !important;
+  box-shadow:0 10px 18px rgba(245,158,11,.24), inset 0 1px 0 rgba(255,255,255,.85);
+}
+#btnSyncPending.has-pending-real::after{
+  content:"";
+  position:absolute;
+  inset:4px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.58);
+  pointer-events:none;
+}
+.pending-retry-main-d9.is-busy,
+.pending-retry-main-d9[aria-busy="true"]{
+  cursor:wait;
+  opacity:.78;
+  filter:saturate(.86);
+}
