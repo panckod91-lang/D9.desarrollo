@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-prod-cache-v13-pendientes-home-definitivo";
+const CACHE_NAME = "d9-prod-cache-v14-badges-pendientes-borradores";
 const URLS = [
   "./",
   "./index.html",
