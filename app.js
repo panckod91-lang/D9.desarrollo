@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.4.8-prod (pendientes home fino)";
+const APP_VERSION = "v1.4.9-prod (fix definitivo pendientes home)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1281,19 +1281,36 @@ function setButtonBusy(btn, busy, busyLabel = "Procesando...", idleLabel = "", b
 
 function pulseSuccess(btn, label = "Listo", sublabel = "") {
   if (!btn) return;
+
+  // D9 v1.4.9: las tarjetas ricas del Home NO deben convertirse en texto plano.
+  // Eso dejaba “Pendientes y en espera” pelado al salir/volver de pantallas o al guardar offline.
+  const isPendingHomeCard = btn.id === "btnSyncPending";
   const dual = btn.classList.contains("home-btn");
-  const idleTitle = btn.dataset.idleTitle || btn.dataset.title || btn.textContent.trim();
-  const idleSub = btn.dataset.idleSub || btn.dataset.sub || "";
+  const richCard = isPendingHomeCard || btn.classList.contains("action-card-vnext") || !!btn.querySelector(".action-head-vnext");
+
+  const idleTitle = btn.dataset.idleTitle || btn.dataset.title || btn.querySelector(".title-group-vnext strong")?.textContent?.trim() || btn.textContent.trim();
+  const idleSub = btn.dataset.idleSub || btn.dataset.sub || btn.querySelector(".title-group-vnext small")?.textContent?.trim() || "";
   const idle = btn.dataset.idleLabel || btn.dataset.title || btn.textContent.trim();
 
   btn.classList.add("is-success");
-  if (dual) renderDualButton(btn, label, sublabel || idleSub || "Todo sincronizado");
-  else btn.textContent = label;
+
+  if (isPendingHomeCard) {
+    renderPendingBadge();
+  } else if (dual) {
+    renderDualButton(btn, label, sublabel || idleSub || "Todo sincronizado");
+  } else if (!richCard) {
+    btn.textContent = label;
+  }
 
   setTimeout(() => {
     btn.classList.remove("is-success");
-    if (dual) renderDualButton(btn, idleTitle, idleSub);
-    else btn.textContent = idle;
+    if (isPendingHomeCard) {
+      renderPendingBadge();
+    } else if (dual) {
+      renderDualButton(btn, idleTitle, idleSub);
+    } else if (!richCard) {
+      btn.textContent = idle;
+    }
   }, 1400);
 }
 
@@ -1416,6 +1433,7 @@ function showView(name, pushHistory = true) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const target = document.getElementById(`view-${name}`);
   if (target) target.classList.add("active");
+  if (name === "home" || name === "pending") schedulePendingHomeRefreshD9();
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   if (pushHistory && name !== "home" && window.history && window.history.pushState) {
@@ -1705,6 +1723,17 @@ function renderPendingBadge() {
   }
   el.classList.remove("hidden");
   el.textContent = String(totalCount);
+}
+
+function refreshPendingUiD9() {
+  renderPendingBadge();
+  if (state.currentView === "pending") renderPendingAndDraftsD9();
+}
+
+function schedulePendingHomeRefreshD9() {
+  renderPendingBadge();
+  requestAnimationFrame(() => renderPendingBadge());
+  setTimeout(() => renderPendingBadge(), 250);
 }
 
 function getBannerRows() {
@@ -3936,12 +3965,14 @@ function savePendingPayload(payload) {
   const pending = readJSON(STORAGE_KEYS.pending, []);
   const pedidoId = String(payload?.pedido_id || payload?.pedidoId || "").trim();
   if (pedidoId && pending.some(x => String(x?.pedido_id || x?.pedidoId || "").trim() === pedidoId)) {
-    renderPendingBadge();
+    refreshPendingUiD9();
+    schedulePendingHomeRefreshD9();
     return;
   }
   pending.push(payload);
   saveJSON(STORAGE_KEYS.pending, pending);
-  renderPendingBadge();
+  refreshPendingUiD9();
+  schedulePendingHomeRefreshD9();
 }
 
 function updateHistoryStatusByPedidoIdD9(pedidoId, status, error = "") {
@@ -4002,8 +4033,8 @@ function removePendingRelatedToPayloadD9(payload, reason = "resuelto") {
 
   if (removed) {
     saveJSON(STORAGE_KEYS.pending, next);
-    renderPendingBadge();
-    if (state.currentView === "pending") renderPendingAndDraftsD9();
+    refreshPendingUiD9();
+    schedulePendingHomeRefreshD9();
     logAppEventD9("PENDIENTE_LIMPIADO_REENVIO_OK", { payload, resultado: "ok", detalle: `${reason}: ${removed}` });
   }
   return removed;
@@ -4516,7 +4547,8 @@ async function sendOrder() {
       logAppEventD9("PENDIENTE_CREADO", { payload, resultado: "sin_conexion", detalle: "Modo offline al enviar" });
       saveHistory(payload, "pendiente", "Sin conexión");
       clearDraftPedidoIdD9();
-      renderPendingBadge();
+      refreshPendingUiD9();
+      schedulePendingHomeRefreshD9();
       toast("Sin internet. Pedido guardado pendiente.");
       if (pendingBtn) pulseSuccess(pendingBtn, "Pendiente guardado", "Se enviará al recuperar conexión");
       return;
@@ -4540,7 +4572,8 @@ async function sendOrder() {
           // IMPORTANTE: el pedido ya salió por WhatsApp y quedó guardado con su ID.
           // Limpiamos el borrador para que el próximo pedido NO reutilice el mismo ID.
           clearDraftPedidoIdD9();
-          renderPendingBadge();
+          refreshPendingUiD9();
+          schedulePendingHomeRefreshD9();
           console.warn("Pedido pendiente:", res?.error);
         } else {
           if (res?.data?.duplicated) {
@@ -4553,7 +4586,8 @@ async function sendOrder() {
             saveHistory(payload, "ok", "Enviado correctamente");
           }
           clearDraftPedidoIdD9();
-          renderPendingBadge();
+          refreshPendingUiD9();
+          schedulePendingHomeRefreshD9();
         }
       })
       .catch(err => {
@@ -4562,7 +4596,8 @@ async function sendOrder() {
         saveHistory(payload, "pendiente", String(err));
         // También en error total: el próximo pedido debe nacer con ID nuevo.
         clearDraftPedidoIdD9();
-        renderPendingBadge();
+        refreshPendingUiD9();
+        schedulePendingHomeRefreshD9();
         console.error("Error total, guardado local:", err);
       });
 
@@ -4642,7 +4677,8 @@ function saveDraftNowD9() {
   clearCart();
   renderSelectedClient();
   renderClients();
-  renderPendingBadge();
+  refreshPendingUiD9();
+  schedulePendingHomeRefreshD9();
   toast("Borrador guardado. No se enviará automáticamente.");
 }
 
@@ -4851,8 +4887,8 @@ async function syncPending() {
     }
 
     saveJSON(STORAGE_KEYS.pending, remaining);
-    renderPendingBadge();
-    if (state.currentView === "pending") renderPendingAndDraftsD9();
+    refreshPendingUiD9();
+    schedulePendingHomeRefreshD9();
 
     if (sentCount && !remaining.length) {
       toast("Pendientes sincronizados.");
@@ -4877,6 +4913,8 @@ async function syncPending() {
     }
     const retryBtnDone = $("#btnRetryPendingD9");
     if (retryBtnDone) setButtonBusy(retryBtnDone, false, "Enviando pendientes...", "📤 Enviar pendientes a PC");
+    refreshPendingUiD9();
+    schedulePendingHomeRefreshD9();
   }
 }
 
@@ -5099,6 +5137,7 @@ function resetTransientUI() {
   if (sendBtn) setButtonBusy(sendBtn, false, "Enviando...", "Enviar pedido");
   if (syncBtn?.tagName === "BUTTON") setButtonBusy(syncBtn, false, "Sincronizando...", syncBtn?.dataset?.idleLabel || "Pendientes y en espera");
   else if (syncBtn) syncBtn.classList.remove("syncing");
+  schedulePendingHomeRefreshD9();
 }
 
 function toast(msg) {
@@ -5461,7 +5500,8 @@ function bind() {
       }
       if (!pendientes.length) {
         toast("No hay pendientes.");
-        renderPendingBadge();
+        refreshPendingUiD9();
+        schedulePendingHomeRefreshD9();
         return;
       }
       retryPendingD9.dataset.busy = "1";
