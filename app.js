@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.0-prod (badges pendientes y borradores)";
+const APP_VERSION = "v1.5.1-prod (badges apilados y texto combinado)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1654,7 +1654,7 @@ function renderSellerBadge() {
 
 function ensurePendingHomeCardD9(card) {
   if (!card) return;
-  const needsRebuild = !card.querySelector(".icon-wrap-vnext") || !card.querySelector("#pendingInfoTitle") || !card.querySelector("#pendingInfoText") || !card.querySelector(".pending-badges-vnext");
+  const needsRebuild = !card.querySelector(".icon-wrap-vnext") || !card.querySelector("#pendingInfoTitle") || !card.querySelector("#pendingInfoText") || !card.querySelector(".pending-badges-vnext") || !card.querySelector("#pendingInfoMeta");
   if (!needsRebuild) return;
   card.innerHTML = `
     <span class="action-head-vnext">
@@ -1662,6 +1662,7 @@ function ensurePendingHomeCardD9(card) {
       <span class="title-group-vnext">
         <strong id="pendingInfoTitle">Pendientes y en espera</strong>
         <small id="pendingInfoText">Sin pendientes ni borradores</small>
+        <small id="pendingInfoMeta" class="pending-meta-vnext hidden" aria-hidden="true"></small>
       </span>
     </span>
     <span class="pending-badges-vnext" aria-hidden="true">
@@ -1686,11 +1687,13 @@ function renderPendingBadge() {
   const draftCountEl = card?.querySelector(".pending-count-drafts-vnext");
   const cardTitle = card?.querySelector("#pendingInfoTitle");
   const cardSub = card?.querySelector("#pendingInfoText");
+  const cardMeta = card?.querySelector("#pendingInfoMeta");
 
   if (card) {
     card.classList.toggle("has-pending", totalCount > 0);
     card.classList.toggle("has-pending-real", pendingCount > 0);
     card.classList.toggle("has-drafts-only", !pendingCount && draftCount > 0);
+    card.classList.toggle("has-mixed-counts", pendingCount > 0 && draftCount > 0);
     if (!pendingCount) card.classList.remove("syncing");
   }
 
@@ -1698,7 +1701,7 @@ function renderPendingBadge() {
     if (pendingCount) {
       pcCountEl.classList.remove("hidden");
       pcCountEl.textContent = String(pendingCount);
-      pcCountEl.title = `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC`;
+      pcCountEl.title = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} sin cargar en PC`;
       pcCountEl.setAttribute("aria-label", pcCountEl.title);
     } else {
       pcCountEl.classList.add("hidden");
@@ -1711,7 +1714,7 @@ function renderPendingBadge() {
     if (draftCount) {
       draftCountEl.classList.remove("hidden");
       draftCountEl.textContent = String(draftCount);
-      draftCountEl.title = `${draftCount} borrador${draftCount === 1 ? "" : "es"} en espera`;
+      draftCountEl.title = `${draftCount} guardado${draftCount === 1 ? "" : "s"}`;
       draftCountEl.setAttribute("aria-label", draftCountEl.title);
     } else {
       draftCountEl.classList.add("hidden");
@@ -1723,9 +1726,25 @@ function renderPendingBadge() {
   if (cardTitle) {
     cardTitle.textContent = "Pendientes y en espera";
   }
+
+  if (cardMeta) {
+    if (pendingCount && draftCount) {
+      cardMeta.classList.remove("hidden");
+      cardMeta.innerHTML = `
+        <span class="meta-pill-vnext meta-pending-vnext">${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}</span>
+        <span class="meta-pill-vnext meta-draft-vnext">${draftCount} guardado${draftCount === 1 ? "" : "s"}</span>
+      `;
+      cardMeta.setAttribute("aria-label", `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} y ${draftCount} guardado${draftCount === 1 ? "" : "s"}`);
+    } else {
+      cardMeta.classList.add("hidden");
+      cardMeta.innerHTML = "";
+      cardMeta.setAttribute("aria-label", "");
+    }
+  }
+
   if (cardSub) {
     if (pendingCount && draftCount) {
-      cardSub.textContent = `${pendingCount} pendiente PC · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
+      cardSub.textContent = `Hay ${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} y ${draftCount} guardado${draftCount === 1 ? "" : "s"}`;
     } else if (pendingCount) {
       cardSub.textContent = `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC`;
     } else if (draftCount) {
@@ -1743,7 +1762,6 @@ function renderPendingBadge() {
   el.classList.remove("hidden");
   el.textContent = pendingCount ? `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} PC` : `${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
 }
-
 function refreshPendingUiD9() {
   renderPendingBadge();
   if (state.currentView === "pending") renderPendingAndDraftsD9();

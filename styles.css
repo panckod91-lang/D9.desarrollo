@@ -4298,16 +4298,16 @@ button:active,
   transform:none !important;
 }
 
-/* D9 v1.5.0 - badges separados para pendientes PC y borradores */
+/* D9 v1.5.1 - badges apilados y texto combinado */
 #btnSyncPending.pending-info-card-vnext .pending-badges-vnext{
   position:absolute !important;
-  right:8px !important;
-  top:8px !important;
+  right:10px !important;
+  top:10px !important;
   z-index:8 !important;
   display:flex !important;
-  flex-direction:row !important;
+  flex-direction:column !important;
   gap:5px !important;
-  align-items:center !important;
+  align-items:flex-end !important;
   pointer-events:none !important;
 }
 #btnSyncPending.pending-info-card-vnext .pending-badges-vnext .pending-count-vnext{
@@ -4334,6 +4334,29 @@ button:active,
 #btnSyncPending.pending-info-card-vnext .pending-count-drafts-vnext{
   background:#38bdf8 !important;
   box-shadow:0 10px 22px rgba(56,189,248,.28) !important;
+}
+#btnSyncPending.pending-info-card-vnext .pending-meta-vnext{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:4px;
+  font-size:.74rem;
+  line-height:1.1;
+  font-weight:900;
+}
+#btnSyncPending.pending-info-card-vnext .pending-meta-vnext.hidden{
+  display:none !important;
+}
+#btnSyncPending.pending-info-card-vnext .pending-meta-vnext .meta-pill-vnext{
+  display:inline-flex;
+  align-items:center;
+  white-space:nowrap;
+}
+#btnSyncPending.pending-info-card-vnext .pending-meta-vnext .meta-pending-vnext{
+  color:#f97316;
+}
+#btnSyncPending.pending-info-card-vnext .pending-meta-vnext .meta-draft-vnext{
+  color:#3867ff;
 }
 #btnSyncPending.has-drafts-only:not(.has-pending-real){
   background:rgba(255,255,255,.72) !important;
