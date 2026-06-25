@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.1-prod (badges apilados y texto combinado)";
+const APP_VERSION = "v1.5.2-prod (busqueda por marca)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -1414,6 +1414,7 @@ async function loadAllData() {
     id: String(r.id || "").trim(),
     nombre: String(r.nombre || "").trim(),
     categoria: String(r.categoria || "Sin categoría").trim() || "Sin categoría",
+    marca: String(r.marca || "").trim(),
     precios: {
       lista_1: parseD9Number(r.lista_1 || r.precio || 0),
       lista_2: parseD9Number(r.lista_2 || 0),
@@ -1654,7 +1655,7 @@ function renderSellerBadge() {
 
 function ensurePendingHomeCardD9(card) {
   if (!card) return;
-  const needsRebuild = !card.querySelector(".icon-wrap-vnext") || !card.querySelector("#pendingInfoTitle") || !card.querySelector("#pendingInfoText") || !card.querySelector(".pending-badges-vnext") || !card.querySelector("#pendingInfoMeta");
+  const needsRebuild = !card.querySelector(".icon-wrap-vnext") || !card.querySelector("#pendingInfoTitle") || !card.querySelector("#pendingInfoText") || !card.querySelector(".pending-count-vnext");
   if (!needsRebuild) return;
   card.innerHTML = `
     <span class="action-head-vnext">
@@ -1662,13 +1663,9 @@ function ensurePendingHomeCardD9(card) {
       <span class="title-group-vnext">
         <strong id="pendingInfoTitle">Pendientes y en espera</strong>
         <small id="pendingInfoText">Sin pendientes ni borradores</small>
-        <small id="pendingInfoMeta" class="pending-meta-vnext hidden" aria-hidden="true"></small>
       </span>
     </span>
-    <span class="pending-badges-vnext" aria-hidden="true">
-      <span class="pending-count-vnext pending-count-pc-vnext hidden">0</span>
-      <span class="pending-count-vnext pending-count-drafts-vnext hidden">0</span>
-    </span>
+    <span class="pending-count-vnext hidden">0</span>
   `;
 }
 
@@ -1681,70 +1678,36 @@ function renderPendingBadge() {
   const el = $("#pendingBadge");
   const card = $("#btnSyncPending");
   ensurePendingHomeCardD9(card);
-  const legacySingleCount = card?.querySelector(":scope > .pending-count-vnext:not(.pending-count-pc-vnext):not(.pending-count-drafts-vnext)");
-  if (legacySingleCount) legacySingleCount.remove();
-  const pcCountEl = card?.querySelector(".pending-count-pc-vnext");
-  const draftCountEl = card?.querySelector(".pending-count-drafts-vnext");
+  const cardCount = card?.querySelector(".pending-count-vnext");
   const cardTitle = card?.querySelector("#pendingInfoTitle");
   const cardSub = card?.querySelector("#pendingInfoText");
-  const cardMeta = card?.querySelector("#pendingInfoMeta");
 
   if (card) {
     card.classList.toggle("has-pending", totalCount > 0);
     card.classList.toggle("has-pending-real", pendingCount > 0);
     card.classList.toggle("has-drafts-only", !pendingCount && draftCount > 0);
-    card.classList.toggle("has-mixed-counts", pendingCount > 0 && draftCount > 0);
     if (!pendingCount) card.classList.remove("syncing");
   }
 
-  if (pcCountEl) {
-    if (pendingCount) {
-      pcCountEl.classList.remove("hidden");
-      pcCountEl.textContent = String(pendingCount);
-      pcCountEl.title = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} sin cargar en PC`;
-      pcCountEl.setAttribute("aria-label", pcCountEl.title);
+  if (cardCount) {
+    const visibleCount = pendingCount || draftCount;
+    if (!visibleCount) {
+      cardCount.classList.add("hidden");
+      cardCount.textContent = "0";
+      cardCount.title = "";
     } else {
-      pcCountEl.classList.add("hidden");
-      pcCountEl.textContent = "0";
-      pcCountEl.title = "";
-    }
-  }
-
-  if (draftCountEl) {
-    if (draftCount) {
-      draftCountEl.classList.remove("hidden");
-      draftCountEl.textContent = String(draftCount);
-      draftCountEl.title = `${draftCount} guardado${draftCount === 1 ? "" : "s"}`;
-      draftCountEl.setAttribute("aria-label", draftCountEl.title);
-    } else {
-      draftCountEl.classList.add("hidden");
-      draftCountEl.textContent = "0";
-      draftCountEl.title = "";
+      cardCount.classList.remove("hidden");
+      cardCount.textContent = String(visibleCount);
+      cardCount.title = pendingCount ? `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC` : `${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
     }
   }
 
   if (cardTitle) {
     cardTitle.textContent = "Pendientes y en espera";
   }
-
-  if (cardMeta) {
-    if (pendingCount && draftCount) {
-      cardMeta.classList.remove("hidden");
-      cardMeta.innerHTML = `
-        <span class="meta-pill-vnext meta-pending-vnext">${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}</span>
-        <span class="meta-pill-vnext meta-draft-vnext">${draftCount} guardado${draftCount === 1 ? "" : "s"}</span>
-      `;
-      cardMeta.setAttribute("aria-label", `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} y ${draftCount} guardado${draftCount === 1 ? "" : "s"}`);
-    } else {
-      cardMeta.classList.add("hidden");
-      cardMeta.innerHTML = "";
-      cardMeta.setAttribute("aria-label", "");
-    }
-  }
-
   if (cardSub) {
     if (pendingCount && draftCount) {
-      cardSub.textContent = `Hay ${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} y ${draftCount} guardado${draftCount === 1 ? "" : "s"}`;
+      cardSub.textContent = `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC · ${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
     } else if (pendingCount) {
       cardSub.textContent = `${pendingCount} pedido${pendingCount === 1 ? "" : "s"} sin cargar en PC`;
     } else if (draftCount) {
@@ -1760,8 +1723,9 @@ function renderPendingBadge() {
     return;
   }
   el.classList.remove("hidden");
-  el.textContent = pendingCount ? `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} PC` : `${draftCount} borrador${draftCount === 1 ? "" : "es"}`;
+  el.textContent = String(totalCount);
 }
+
 function refreshPendingUiD9() {
   renderPendingBadge();
   if (state.currentView === "pending") renderPendingAndDraftsD9();
@@ -2683,7 +2647,7 @@ function productCode(p) {
 function productMatchesTerm(p, term) {
   const t = String(term || "").trim().toLowerCase();
   if (!t) return true;
-  return [p?.nombre, p?.categoria, productCode(p)]
+  return [p?.nombre, p?.categoria, p?.marca, productCode(p)]
     .some(v => String(v || "").toLowerCase().includes(t));
 }
 
