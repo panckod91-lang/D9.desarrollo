@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.2-prod (busqueda por marca)";
+const APP_VERSION = "v1.5.7-prod (fix ID congelado)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -45,6 +45,8 @@ const state = {
   activePriceList: "lista_1",
   priceSearch: "",
   priceCategory: "",
+  priceBrand: "",
+  priceBrands: [],
   selectedClient: null,
   guestClientDraft: null,
   selectedCategory: "",
@@ -2286,6 +2288,8 @@ function logoutSeller() {
   state.selectedClient = null;
   state.selectedCategory = "";
   state.priceCategory = "";
+  state.priceBrand = "";
+  state.priceBrands = [];
   state.cart = [];
   syncSessionUI();
   renderSellerBadge();
@@ -2585,6 +2589,7 @@ function renderPriceListControls() {
     modeBox.classList.add("hidden");
     info.textContent = "";
     renderPriceCategoryChips();
+    renderPriceBrandChips();
     return;
   }
 
@@ -2598,6 +2603,7 @@ function renderPriceListControls() {
   }
 
   renderPriceCategoryChips();
+  renderPriceBrandChips();
 }
 
 function renderPriceCategoryChips() {
@@ -2622,6 +2628,89 @@ function renderPriceCategoryModal() {
     </button>` + cats.map(cat => `
     <button class="option-item option-button ${state.priceCategory === cat ? "is-selected" : ""}" data-price-category="${esc(cat)}" type="button">
       <strong>${esc(cat)}</strong>
+    </button>`).join("");
+}
+
+function cleanBrandD9(brand) {
+  return String(brand || "").trim();
+}
+
+function productBrandD9(p) {
+  return cleanBrandD9(p?.marca || p?.brand || "");
+}
+
+function brandsListD9() {
+  const map = new Map();
+  (state.products || [])
+    .filter(productHasValidPrice)
+    .forEach(p => {
+      const brand = productBrandD9(p);
+      if (!brand) return;
+      const key = brand.toLowerCase();
+      if (!map.has(key)) map.set(key, brand);
+    });
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base", numeric: true }));
+}
+
+function selectedPriceBrandsD9() {
+  if (Array.isArray(state.priceBrands)) {
+    return state.priceBrands.map(cleanBrandD9).filter(Boolean);
+  }
+  const legacy = cleanBrandD9(state.priceBrand || "");
+  return legacy ? [legacy] : [];
+}
+
+function setSelectedPriceBrandsD9(brands) {
+  const clean = Array.from(new Set((brands || []).map(cleanBrandD9).filter(Boolean)));
+  state.priceBrands = clean;
+  state.priceBrand = clean.length === 1 ? clean[0] : "";
+}
+
+function isPriceBrandSelectedD9(brand) {
+  const b = cleanBrandD9(brand);
+  return selectedPriceBrandsD9().some(x => x === b);
+}
+
+function togglePriceBrandD9(brand) {
+  const b = cleanBrandD9(brand);
+  if (!b) {
+    setSelectedPriceBrandsD9([]);
+    return;
+  }
+  const current = selectedPriceBrandsD9();
+  if (current.includes(b)) {
+    setSelectedPriceBrandsD9(current.filter(x => x !== b));
+  } else {
+    setSelectedPriceBrandsD9([...current, b]);
+  }
+}
+
+function renderPriceBrandChips() {
+  const wrap = $("#priceBrandWrap");
+  if (!wrap) return;
+  const selected = selectedPriceBrandsD9();
+  const label = selected.length
+    ? (selected.length === 1 ? selected[0] : `${selected.length} marcas seleccionadas`)
+    : "Todas las marcas";
+  wrap.innerHTML = `
+    <button id="btnOpenPriceBrands" class="picker-btn compact-picker" type="button">
+      <span class="picker-label-inline">Marca</span>
+      <strong>${esc(label)}</strong>
+    </button>`;
+  renderPriceBrandModal();
+}
+
+function renderPriceBrandModal() {
+  const list = $("#priceBrandList");
+  if (!list) return;
+  const brands = brandsListD9();
+  const selected = selectedPriceBrandsD9();
+  list.innerHTML = `
+    <button class="option-item option-button ${!selected.length ? "is-selected" : ""}" data-price-brand="" type="button">
+      <strong>Todas las marcas</strong>
+    </button>` + brands.map(brand => `
+    <button class="option-item option-button ${isPriceBrandSelectedD9(brand) ? "is-selected" : ""}" data-price-brand="${esc(brand)}" type="button">
+      <strong>${esc(brand)}</strong>
     </button>`).join("");
 }
 
@@ -2673,19 +2762,14 @@ function renderPriceProducts() {
   if (!box) return;
   const term = (state.priceSearch || "").toLowerCase();
   const cat = state.priceCategory;
+  const brands = selectedPriceBrandsD9();
 
   let filtered = [];
 
-  if (term) {
+  if (term || cat || brands.length) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => productMatchesTerm(p, term) && (!cat || p.categoria === cat))
-      .sort(sortByName)
-      .slice(0, 500);
-  } else if (cat) {
-    filtered = state.products
-      .filter(productHasValidPrice)
-      .filter(p => p.categoria === cat)
+      .filter(p => (!term || productMatchesTerm(p, term)) && (!cat || p.categoria === cat) && (!brands.length || brands.includes(productBrandD9(p))))
       .sort(sortByName)
       .slice(0, 500);
   } else {
@@ -2704,7 +2788,7 @@ function renderPriceProducts() {
     <div class="price-row">
       <div class="price-row-main">
         <strong>${esc(p.nombre)}</strong>
-        <div class="option-meta">${esc([productCode(p) ? `Cód. ${productCode(p)}` : "", cleanCategory(p.categoria)].filter(Boolean).join(" · "))}</div>
+        <div class="option-meta">${esc([productCode(p) ? `Cód. ${productCode(p)}` : "", cleanCategory(p.categoria), productBrandD9(p)].filter(Boolean).join(" · "))}</div>
       </div>
       <div class="price-row-side">
         <strong>${money(productPrice(p))}</strong>
@@ -2718,9 +2802,10 @@ function renderPriceProducts() {
 function getPriceListFilteredProductsD9() {
   const term = String(state.priceSearch || "").trim().toLowerCase();
   const cat = state.priceCategory || "";
+  const brands = selectedPriceBrandsD9();
   return (state.products || [])
     .filter(productHasValidPrice)
-    .filter(p => (!term || productMatchesTerm(p, term)) && (!cat || p.categoria === cat))
+    .filter(p => (!term || productMatchesTerm(p, term)) && (!cat || p.categoria === cat) && (!brands.length || brands.includes(productBrandD9(p))))
     .sort((a, b) => {
       const ca = cleanCategory(a.categoria || "");
       const cb = cleanCategory(b.categoria || "");
@@ -2834,15 +2919,15 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   const enviadaPor = pdfAsciiD9(state.seller?.nombre || state.seller?.usuario || "D9");
   const term = String(state.priceSearch || "").trim();
   const selectedCat = state.priceCategory || "";
+  const selectedBrands = selectedPriceBrandsD9();
   const cleanTerm = pdfAsciiD9(term).toUpperCase();
   let titleExtra = "Lista completa";
-  if (selectedCat && term) {
-    titleExtra = `${cleanCategory(selectedCat)} · Filtro: ${cleanTerm}`;
-  } else if (selectedCat) {
-    titleExtra = cleanCategory(selectedCat);
-  } else if (term) {
-    titleExtra = `Resultados filtrados: ${cleanTerm}`;
-  }
+  const filtrosTitulo = [];
+  if (selectedCat) filtrosTitulo.push(cleanCategory(selectedCat));
+  if (selectedBrands.length === 1) filtrosTitulo.push(`Marca: ${cleanBrandD9(selectedBrands[0])}`);
+  if (selectedBrands.length > 1) filtrosTitulo.push(`Marcas: ${selectedBrands.map(cleanBrandD9).join(", ")}`);
+  if (term) filtrosTitulo.push(`Filtro: ${cleanTerm}`);
+  if (filtrosTitulo.length) titleExtra = filtrosTitulo.join(" · ");
   const maxNameChars = 54;
   const rowLineH = 9;
   const rowMinH = 14;
@@ -2892,7 +2977,7 @@ function buildPriceListPdfBlobD9(products, logoImage) {
   function addColumns() {
     page.push(`0.10 0.24 0.38 rg ` + pdfTextD9("Cod", xCode, y, 8, "F2"));
     page.push(pdfTextD9("Articulo", xName, y, 8, "F2"));
-    page.push(pdfTextRightD9("Precio final con IVA", xPrice, y, 8, "F2"));
+    page.push(pdfTextRightD9("Precio final", xPrice, y, 8, "F2"));
     page.push(`0.70 0.78 0.84 RG ` + pdfLineD9(margin, y - 5, pageW - margin, y - 5));
     y -= columnsH;
   }
@@ -3825,8 +3910,105 @@ function delayD9(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function verifyPedidoInPcD9(pedidoId, attempts = 3) {
-  const id = String(pedidoId || "").trim();
+
+function normalizeCompareTextD9(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function numbersNearD9(a, b, tolerance = 0.08) {
+  const na = Number(String(a ?? "").replace(/\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(/,/g, "."));
+  const nb = Number(String(b ?? "").replace(/\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(/,/g, "."));
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) return false;
+  return Math.abs(na - nb) <= tolerance;
+}
+
+function pickPcValueD9(row, keys) {
+  if (!row || typeof row !== "object") return "";
+  const direct = keys.find(k => row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "");
+  if (direct) return row[direct];
+  const wanted = keys.map(k => normalizeCompareTextD9(k).replace(/\s+/g, "_")).filter(Boolean);
+  for (const [k, v] of Object.entries(row)) {
+    if (v === undefined || v === null || String(v).trim() === "") continue;
+    const nk = normalizeCompareTextD9(k).replace(/\s+/g, "_");
+    if (wanted.includes(nk)) return v;
+  }
+  return "";
+}
+
+function getPcRowClienteTextD9(row) {
+  return String(pickPcValueD9(row, ["cliente", "cliente_nombre", "nombre_cliente", "razon_social", "razón_social", "Cliente"]) || "");
+}
+
+function getPcRowVendedorIdD9(row) {
+  return String(pickPcValueD9(row, ["vendedor_id", "id_vendedor", "vend_id", "Vendedor ID"]) || "").trim();
+}
+
+function getPcRowTotalPedidoD9(row) {
+  return pickPcValueD9(row, ["total_pedido", "total", "total pedido", "Total Pedido"]);
+}
+
+function getPcRowProductoIdD9(row) {
+  return String(pickPcValueD9(row, ["id_producto", "producto_id", "codigo", "código", "cod", "Codigo", "Código"]) || "").trim();
+}
+
+function getPcRowProductoNombreD9(row) {
+  return String(pickPcValueD9(row, ["producto", "nombre", "descripcion", "descripción", "detalle", "Producto"]) || "");
+}
+
+function getPcRowCantidadD9(row) {
+  return pickPcValueD9(row, ["cantidad", "cant", "Cantidad"]);
+}
+
+function getPcRowPrecioD9(row) {
+  return pickPcValueD9(row, ["precio", "precio_unitario", "precio unitario", "Precio"]);
+}
+
+function pcRowsMatchPayloadD9(rows, payload) {
+  if (!Array.isArray(rows) || !rows.length || !payload) return false;
+  const items = Array.isArray(payload.carrito) ? payload.carrito : [];
+  if (!items.length || rows.length !== items.length) return false;
+
+  const vendedorId = String(payload?.vendedor?.id || payload?.vendedor_id || "").trim();
+  const rowVend = getPcRowVendedorIdD9(rows[0]);
+  if (vendedorId && rowVend && vendedorId !== rowVend) return false;
+
+  const clientePayload = normalizeCompareTextD9(payload?.cliente?.nombre_real || payload?.cliente?.nombre || payload?.cliente_nombre || "");
+  const clienteRow = normalizeCompareTextD9(getPcRowClienteTextD9(rows[0]));
+  if (clientePayload && clienteRow && !clientePayload.includes(clienteRow) && !clienteRow.includes(clientePayload)) return false;
+
+  const totalRow = getPcRowTotalPedidoD9(rows[0]);
+  if (totalRow !== "" && !numbersNearD9(totalRow, payload.total, 0.15)) return false;
+
+  return items.every(item => {
+    const itemId = String(item.id || item.id_producto || item.producto_id || "").trim();
+    const itemName = normalizeCompareTextD9(item.nombre || "");
+    const qty = Number(item.cantidad || 0);
+    const price = Number(item.precio || 0);
+
+    return rows.some(row => {
+      const rowId = getPcRowProductoIdD9(row);
+      const rowName = normalizeCompareTextD9(getPcRowProductoNombreD9(row));
+      const idOk = !itemId || !rowId || itemId === rowId;
+      const nameOk = !itemName || !rowName || itemName === rowName;
+      return idOk && nameOk && numbersNearD9(getPcRowCantidadD9(row), qty, 0.001) && numbersNearD9(getPcRowPrecioD9(row), price, 0.15);
+    });
+  });
+}
+
+function getVerifyPedidoIdD9(pedidoOrPayload) {
+  if (pedidoOrPayload && typeof pedidoOrPayload === "object") {
+    return String(pedidoOrPayload.pedido_id || pedidoOrPayload.pedidoId || "").trim();
+  }
+  return String(pedidoOrPayload || "").trim();
+}
+
+async function verifyPedidoInPcD9(pedidoOrPayload, attempts = 3) {
+  const payload = pedidoOrPayload && typeof pedidoOrPayload === "object" ? pedidoOrPayload : null;
+  const id = getVerifyPedidoIdD9(pedidoOrPayload);
   if (!id) return { ok: false, error: "Pedido sin ID para verificar" };
 
   let lastError = "La PC no confirmó que el pedido haya quedado cargado";
@@ -3834,12 +4016,23 @@ async function verifyPedidoInPcD9(pedidoId, attempts = 3) {
   for (let intento = 1; intento <= attempts; intento++) {
     try {
       const r = await fetch(`${getApiBaseD9()}?action=list_pedidos&_=${Date.now()}`, { cache: "no-store" });
-      const data = await r.json();
+      const raw = await r.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch (_) { data = { raw }; }
+
       if (!r.ok || data?.ok !== true || !Array.isArray(data.pedidos)) {
         lastError = data?.error || "La PC no devolvió lista de pedidos";
       } else {
-        const exists = data.pedidos.some(p => getPedidoIdFromPcRowD9(p) === id);
-        if (exists) return { ok: true };
+        const rows = data.pedidos.filter(p => getPedidoIdFromPcRowD9(p) === id);
+        if (rows.length) {
+          if (!payload || pcRowsMatchPayloadD9(rows, payload)) return { ok: true, rows_found: rows.length };
+          return {
+            ok: false,
+            error_code: "VERIFY_ID_MISMATCH",
+            error: "Ese ID existe en PC, pero pertenece a otro cliente/productos. No se confirma este pedido con ese ID.",
+            rows_found: rows.length
+          };
+        }
         lastError = "La PC no confirmó que el pedido haya quedado cargado";
       }
     } catch (err) {
@@ -3859,14 +4052,13 @@ async function trySendToWebhook(payload) {
 
   let sendPayload = buildWebhookPayload(payload);
   let lastError = null;
-  let collisionRetryDone = false;
 
   async function verifyAfterSendProblemD9(endpoint, errorText) {
     // Caso real detectado: Apps Script puede escribir en PC, pero el navegador perder
     // la confirmación del POST (Failed to fetch / redirect / conexión gris).
     // Antes de declarar "No llegó a PC", verificamos por ID.
     try {
-      const verify = await verifyPedidoInPcD9(sendPayload.pedido_id, 3);
+      const verify = await verifyPedidoInPcD9(payload, 3);
       if (verify?.ok) {
         return {
           ok: true,
@@ -3890,20 +4082,12 @@ async function trySendToWebhook(payload) {
     try {
       let result = await sendToEndpoint(endpoint, sendPayload);
 
-      // Defensa anti-colisión:
-      // si el backend avisa que el ID ya existe pero pertenece a otro pedido,
-      // regeneramos ID una sola vez y reenviamos. No lo marcamos como "ya cargado".
-      if (!result?.ok && result?.data?.error_code === "ERROR_COLISION_ID" && !collisionRetryDone) {
-        collisionRetryDone = true;
-        const oldId = sendPayload.pedido_id;
-        const newId = regeneratePedidoIdForPayloadD9(payload);
-        sendPayload = buildWebhookPayload(payload);
-        console.warn(`[D9] Colisión de ID detectada (${oldId}). Reintentando con ${newId}.`);
-        result = await sendToEndpoint(endpoint, sendPayload);
-      }
+      // Defensa anti-colisión v1.5.7:
+      // si el backend avisa que el ID pertenece a otro pedido, NO regeneramos acá.
+      // Regenerar automáticamente escondía el problema y podía mezclar WhatsApp/PC.
 
       if (result?.ok) {
-        const verify = await verifyPedidoInPcD9(sendPayload.pedido_id);
+        const verify = await verifyPedidoInPcD9(payload);
         if (verify.ok) return result;
         lastError = { ok: false, error: verify.error || "No confirmado en PC", endpoint, data: result.data };
       } else {
@@ -4283,7 +4467,7 @@ async function manualLoadHistoryItemsToPcD9(ids) {
     }
 
     try {
-      const exists = await verifyPedidoInPcD9(payload.pedido_id, 2);
+      const exists = await verifyPedidoInPcD9(payload, 2);
       if (exists?.ok) {
         already++;
         updateHistoryItemByLocalIdD9(localId, {
@@ -4299,15 +4483,16 @@ async function manualLoadHistoryItemsToPcD9(ids) {
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
-        logAppEventD9(res?.data?.duplicated ? "REENVIO_HISTORIAL_WARNING" : "REENVIO_HISTORIAL_OK", { payload, resultado: res?.data?.duplicated ? "posible_duplicado" : "ok", detalle: res?.data?.duplicated ? duplicateWarningTextD9() : "" });
+        const msg = res?.data?.duplicated ? "Ya estaba cargado en PC. No se duplicó." : "Cargado manualmente en PC";
+        logAppEventD9(res?.data?.duplicated ? "REENVIO_HISTORIAL_DUPLICADO_CONTROLADO" : "REENVIO_HISTORIAL_OK", { payload, resultado: "ok", detalle: msg });
         updateHistoryItemByLocalIdD9(localId, {
           pedido_id: payload.pedido_id,
           vendedor_id: payload.vendedor?.id || item.vendedor_id || "",
-          status: res?.data?.duplicated ? "duplicado_warning" : "ok",
-          pc_status: res?.data?.duplicated ? "pendiente" : "cargado",
-          error: res?.data?.duplicated ? duplicateWarningTextD9() : "Cargado manualmente en PC"
+          status: "ok",
+          pc_status: "cargado",
+          error: msg
         });
-        if (!res?.data?.duplicated) removePendingRelatedToPayloadD9(payload, "carga manual OK");
+        removePendingRelatedToPayloadD9(payload, res?.data?.duplicated ? "duplicado controlado" : "carga manual OK");
       } else {
         fail++;
         logAppEventD9("REENVIO_HISTORIAL_ERROR", { payload, resultado: "error", error: res?.error || "No llegó a PC" });
@@ -4451,7 +4636,7 @@ async function resyncHistoryItemsToPcD9(ids) {
 
     try {
       // Primero verificamos. Si ya está en PC, NO hacemos POST y evitamos duplicados.
-      const exists = await verifyPedidoInPcD9(payload.pedido_id);
+      const exists = await verifyPedidoInPcD9(payload);
       if (exists?.ok) {
         already++;
         updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", "Ya recibido previamente");
@@ -4463,9 +4648,10 @@ async function resyncHistoryItemsToPcD9(ids) {
       if (res?.ok) {
         ok++;
         if (res?.data?.duplicated) {
-          const warn = duplicateWarningTextD9();
-          logAppEventD9("REENVIO_HISTORIAL_WARNING", { payload, resultado: "posible_duplicado", detalle: warn });
-          updateHistoryStatusByPedidoIdD9(payload.pedido_id, "duplicado_warning", warn);
+          const msg = "Ya estaba cargado en PC. No se duplicó.";
+          logAppEventD9("REENVIO_HISTORIAL_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
+          updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", msg);
+          removePendingRelatedToPayloadD9(payload, "duplicado controlado");
         } else {
           logAppEventD9("REENVIO_HISTORIAL_OK", { payload, resultado: "ok" });
           updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", "Reenviado a PC");
@@ -4505,6 +4691,11 @@ async function sendOrder() {
   if (validateOrder() !== true) return;
 
   const payload = buildOrderPayload();
+  // v1.5.7: el ID ya quedó copiado dentro de este payload.
+  // Se libera inmediatamente el ID global del borrador para que el próximo pedido
+  // no arrastre el mismo pedido_id mientras este envío sigue verificando en segundo plano.
+  clearDraftPedidoIdD9();
+  logAppEventD9("PEDIDO_ID_CONGELADO", { payload, resultado: "ok", detalle: "ID fijado para este pedido y liberado para el próximo" });
   logAppEventD9("CONFIRMAR_ENVIO_TOCADO", { payload, resultado: "tap" });
 
   if (isOrderSendLocked(payload)) {
@@ -4578,10 +4769,11 @@ async function sendOrder() {
           console.warn("Pedido pendiente:", res?.error);
         } else {
           if (res?.data?.duplicated) {
-            const warn = duplicateWarningTextD9();
-            logAppEventD9("PEDIDO_ENVIADO_SHEETS_WARNING", { payload, resultado: "posible_duplicado", detalle: warn });
-            saveHistory(payload, "duplicado_warning", warn);
-            toast(warn);
+            const msg = "Ya estaba cargado en PC. No se duplicó.";
+            logAppEventD9("PEDIDO_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
+            saveHistory(payload, "ok", msg);
+            removePendingRelatedToPayloadD9(payload, "duplicado controlado");
+            toast(msg);
           } else {
             logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: "ok", detalle: res?.data?.message || "Enviado correctamente" });
             saveHistory(payload, "ok", "Enviado correctamente");
@@ -4868,9 +5060,9 @@ async function syncPending() {
         if (result.ok) {
           sentCount++;
           if (result?.data?.duplicated) {
-            const warn = duplicateWarningTextD9();
-            logAppEventD9("PENDIENTE_SYNC_WARNING", { payload: item, resultado: "posible_duplicado", detalle: warn });
-            updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "duplicado_warning", warn);
+            const msg = "Ya estaba cargado en PC. No se duplicó.";
+            logAppEventD9("PENDIENTE_SYNC_DUPLICADO_CONTROLADO", { payload: item, resultado: "ok", detalle: msg });
+            updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", msg);
           } else {
             logAppEventD9("PENDIENTE_SYNC_OK", { payload: item, resultado: "ok" });
             updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", "Cargado en PC");
@@ -5556,6 +5748,14 @@ function bind() {
     if (openPriceCats) {
       renderPriceCategoryModal();
       openModal("priceCategory");
+      return;
+    }
+
+    const openPriceBrands = ev.target.closest("#btnOpenPriceBrands");
+    if (openPriceBrands) {
+      renderPriceBrandModal();
+      openModal("priceBrand");
+      return;
     }
 
     const priceCategory = ev.target.closest("[data-price-category]");
@@ -5564,6 +5764,21 @@ function bind() {
       renderPriceCategoryChips();
       renderPriceProducts();
       closeModal("priceCategory");
+      return;
+    }
+
+    const priceBrand = ev.target.closest("[data-price-brand]");
+    if (priceBrand) {
+      togglePriceBrandD9(priceBrand.dataset.priceBrand || "");
+      renderPriceBrandChips();
+      renderPriceProducts();
+      return;
+    }
+
+    const applyPriceBrands = ev.target.closest("#btnApplyPriceBrands");
+    if (applyPriceBrands) {
+      closeModal("priceBrand");
+      return;
     }
   });
 

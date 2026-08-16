@@ -1,0 +1,37 @@
+D9 Pedidos v1.5.7-prod (fix ID congelado)
+
+Base usada:
+- pD9.cloud-main-v1.5.6-prod-precio-final-lista.zip
+
+Objetivo:
+- Corregir el problema detectado en Mati: mismo pedido_id arrastrado a otro cliente y falsos OK/Warnings cuando la PC tenía ese ID pero para otro pedido.
+
+Cambios en app.js:
+1. APP_VERSION -> v1.5.7-prod (fix ID congelado).
+2. Al tocar Confirmar, el pedido_id queda copiado dentro del payload del pedido y se libera inmediatamente el ID global del borrador.
+   - Evita casos tipo: Ferlatti -> Charly con mismo ID, Moreno -> La Esperanza con mismo ID.
+3. Nuevo log: PEDIDO_ID_CONGELADO.
+4. verifyPedidoInPcD9 ahora puede verificar payload completo:
+   - ID
+   - vendedor
+   - cliente
+   - total
+   - productos/cantidades/precios
+   Si el ID existe pero el contenido no coincide, devuelve VERIFY_ID_MISMATCH.
+5. trySendToWebhook ya no regenera automáticamente un ID nuevo ante ERROR_COLISION_ID.
+   Antes eso podía esconder el problema y dejar WhatsApp con un ID y PC con otro.
+6. Cuando el backend devuelve duplicated:true y el contenido coincide, se trata como duplicado controlado:
+   - status local OK
+   - PC cargado
+   - mensaje: "Ya estaba cargado en PC. No se duplicó."
+7. Menos warnings falsos: ya no se usa "posible duplicado" para casos donde se verificó que el mismo pedido ya estaba cargado.
+
+Archivos tocados:
+- app.js
+- sw.js
+- README.md
+
+No se tocó:
+- diseño de lista/precios/marcas
+- Admin
+- flujo manual por lotes propuesto

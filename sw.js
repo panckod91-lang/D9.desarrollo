@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-prod-cache-v14-busqueda-marca";
+const CACHE_NAME = "d9-prod-cache-v157-fix-id-congelado";
 const URLS = [
   "./",
   "./index.html",
