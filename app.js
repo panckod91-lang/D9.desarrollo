@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.7-prod (fix ID congelado)";
+const APP_VERSION = "v1.5.8-prod (fix retorno WhatsApp)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3919,9 +3919,36 @@ function normalizeCompareTextD9(value) {
     .trim();
 }
 
+function parseD9NumberForCompare(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  let s = String(value ?? "").trim();
+  if (!s) return NaN;
+  s = s.replace(/\$/g, "").replace(/\s/g, "");
+
+  // Soporta ambos mundos:
+  // - Hoja/Argentina: $4.222,90 -> 4222.90
+  // - JS/backend:     4222.900000000001 -> 4222.90
+  const hasComma = s.includes(",");
+  const hasDot = s.includes(".");
+  if (hasComma && hasDot) {
+    // Si están ambos, asumimos formato local: miles con punto, decimal con coma.
+    s = s.replace(/\./g, "").replace(/,/g, ".");
+  } else if (hasComma) {
+    s = s.replace(/,/g, ".");
+  } else if (hasDot) {
+    // Si solo hay punto, NO lo borramos: puede ser decimal JS.
+    // Solo lo tratamos como miles si parece 1.234.567 sin decimales.
+    const parts = s.split(".");
+    if (parts.length > 2 && parts.every((part, idx) => idx === 0 ? /^\d{1,3}$/.test(part) : /^\d{3}$/.test(part))) {
+      s = parts.join("");
+    }
+  }
+  return Number(s);
+}
+
 function numbersNearD9(a, b, tolerance = 0.08) {
-  const na = Number(String(a ?? "").replace(/\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(/,/g, "."));
-  const nb = Number(String(b ?? "").replace(/\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(/,/g, "."));
+  const na = parseD9NumberForCompare(a);
+  const nb = parseD9NumberForCompare(b);
   if (!Number.isFinite(na) || !Number.isFinite(nb)) return false;
   return Math.abs(na - nb) <= tolerance;
 }
@@ -4089,6 +4116,22 @@ async function trySendToWebhook(payload) {
       if (result?.ok) {
         const verify = await verifyPedidoInPcD9(payload);
         if (verify.ok) return result;
+
+        // v1.5.8: si el POST del backend respondió ok:true, no convertimos el pedido
+        // en pendiente solo porque la verificación posterior no pudo comparar filas.
+        // Ese caso apareció al volver desde WhatsApp: el pedido ya estaba en Sheets,
+        // pero la comparación local lo marcaba como “otro pedido” por formato numérico.
+        if (verify?.error_code === "VERIFY_ID_MISMATCH") {
+          return {
+            ...result,
+            data: {
+              ...(result.data || {}),
+              verify_warning: true,
+              message: result?.data?.message || "Enviado correctamente"
+            }
+          };
+        }
+
         lastError = { ok: false, error: verify.error || "No confirmado en PC", endpoint, data: result.data };
       } else {
         // Aunque el POST haya vuelto raro/no confirmado, puede haber escrito en PC.

@@ -32,3 +32,11 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - La verificación contra PC ya no valida sólo por ID: si el ID existe pero pertenece a otro cliente/productos/total, no lo toma como cargado.
 - Se elimina el reintento automático con ID nuevo ante colisión, para no mezclar WhatsApp/PC ni esconder el error.
 - Los duplicados controlados ahora se marcan como cargados en PC con mensaje claro: "Ya estaba cargado en PC. No se duplicó.".
+
+
+## v1.5.8-prod (fix retorno WhatsApp)
+
+- Corrige comparación numérica entre valores de Sheets (`$4.222,90`) y valores JS (`4222.900000000001`).
+- Si el backend respondió `ok:true`, no se convierte el pedido en pendiente por una verificación posterior demasiado estricta.
+- Apunta a eliminar warnings falsos al volver desde WhatsApp cuando el pedido ya está cargado en `pedidos`.
+- Mantiene el fix de ID congelado/liberado de v1.5.7.
