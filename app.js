@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.8-prod (fix retorno WhatsApp)";
+const APP_VERSION = "v1.5.9-prod (limpia pendientes falsos)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -4134,10 +4134,26 @@ async function trySendToWebhook(payload) {
 
         lastError = { ok: false, error: verify.error || "No confirmado en PC", endpoint, data: result.data };
       } else {
-        // Aunque el POST haya vuelto raro/no confirmado, puede haber escrito en PC.
-        // Si el backend confirmó colisión, NO verificamos por el ID viejo porque pertenece a otro pedido.
+        // v1.5.9: si el POST devuelve colisión de ID, igual verificamos por ID+contenido.
+        // Caso real: el primer envío sí escribió en Sheets, pero al volver de WhatsApp
+        // una segunda confirmación/reintento recibió "ID ya existe" y dejaba pendiente falso.
+        // Si el ID existe y las filas coinciden con este mismo payload, lo tomamos como OK controlado.
         if (result?.data?.error_code === "ERROR_COLISION_ID") {
-          lastError = { ok: false, error: result?.error || "ID repetido con otro pedido. Reenviá para generar ID nuevo.", endpoint, data: result.data };
+          const verify = await verifyPedidoInPcD9(payload, 3);
+          if (verify?.ok) {
+            return {
+              ok: true,
+              endpoint,
+              data: {
+                ok: true,
+                duplicated: true,
+                pedido_id: sendPayload.pedido_id,
+                verified_after_collision: true,
+                message: "El pedido ya estaba cargado en PC. Se limpió el pendiente local."
+              }
+            };
+          }
+          lastError = { ok: false, error: result?.error || verify?.error || "ID repetido con otro pedido. Revisar antes de reenviar.", endpoint, data: result.data };
         } else {
           lastError = await verifyAfterSendProblemD9(endpoint, result?.error || `Fallo en ${endpoint}`);
           if (lastError?.ok) return lastError;
@@ -4789,6 +4805,11 @@ async function sendOrder() {
       return;
     }
 
+    // v1.5.9: marcamos el fingerprint ANTES de abrir WhatsApp.
+    // En Android el cambio de app puede cortar el hilo JS antes de dejar registrada la marca;
+    // entonces al volver se podía disparar un segundo envío del mismo pedido.
+    markRecentOrderFingerprintD9(payload, 180000);
+
     if (!openWhatsApp(waPhone, waText)) {
       logAppEventD9("WHATSAPP_ERROR", { payload, resultado: "error", detalle: "Falta WhatsApp destino" });
       toast("Falta WhatsApp destino en confi.");
@@ -4796,7 +4817,6 @@ async function sendOrder() {
     }
 
     logAppEventD9("WHATSAPP_ABIERTO", { payload, resultado: "ok", detalle: waPhone ? `destino:${waPhone}` : "sin destino" });
-    markRecentOrderFingerprintD9(payload, 120000);
 
     trySendToWebhook(payload)
       .then(res => {
@@ -4812,7 +4832,7 @@ async function sendOrder() {
           console.warn("Pedido pendiente:", res?.error);
         } else {
           if (res?.data?.duplicated) {
-            const msg = "Ya estaba cargado en PC. No se duplicó.";
+            const msg = res?.data?.message || "Ya estaba cargado en PC. No se duplicó.";
             logAppEventD9("PEDIDO_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
             saveHistory(payload, "ok", msg);
             removePendingRelatedToPayloadD9(payload, "duplicado controlado");
@@ -4820,6 +4840,7 @@ async function sendOrder() {
           } else {
             logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: "ok", detalle: res?.data?.message || "Enviado correctamente" });
             saveHistory(payload, "ok", "Enviado correctamente");
+            removePendingRelatedToPayloadD9(payload, "envío confirmado OK");
           }
           clearDraftPedidoIdD9();
           refreshPendingUiD9();
