@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.10-prod (retorno sin reintento)";
+const APP_VERSION = "v1.5.11-prod (cierre visual WhatsApp)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3712,7 +3712,33 @@ function lockOrderSend(payload, durationMs = 5000) {
 function releaseOrderSendLock(delayMs = 1800) {
   setTimeout(() => {
     state.isSending = false;
+    state.orderSendLockUntil = 0;
+    state.lastOrderFingerprint = "";
   }, delayMs);
+}
+
+function closeOrderVisualAfterWhatsAppD9(payload) {
+  // D9 v1.5.11:
+  // El envío técnico sigue con el payload congelado, pero la pantalla del pedido
+  // se cierra apenas WhatsApp fue abierto. Así, al volver desde WhatsApp no queda
+  // vivo el pedido anterior ni puede re-dispararse la confirmación desde el mismo modal.
+  try { closeOrderConfirmModal(); } catch (_) {}
+  try { closeModal("order"); } catch (_) {}
+
+  if (state.seller?.rol === "cliente") {
+    applyUserContext();
+  } else if (!state.seller) {
+    state.selectedClient = state.guestClientDraft || state.selectedClient;
+  } else {
+    state.selectedClient = null;
+  }
+
+  clearCart();
+  renderSelectedClient();
+  renderClients();
+  renderProducts();
+  refreshPendingUiD9();
+  schedulePendingHomeRefreshD9();
 }
 
 
@@ -4775,7 +4801,7 @@ async function sendOrder() {
     return;
   }
 
-  lockOrderSend(payload, 15000);
+  lockOrderSend(payload, 300000);
 
   const sendBtn = $("#btnSend");
   const pendingBtn = $("#btnSyncPending");
@@ -4821,6 +4847,7 @@ async function sendOrder() {
     }
 
     logAppEventD9("WHATSAPP_ABIERTO", { payload, resultado: "ok", detalle: waPhone ? `destino:${waPhone}` : "sin destino" });
+    closeOrderVisualAfterWhatsAppD9(payload);
 
     try {
       // v1.5.10: esperamos la confirmación. Antes el envío seguía en segundo plano,
