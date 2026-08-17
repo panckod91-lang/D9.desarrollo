@@ -50,3 +50,10 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 
 ## v1.5.12 - verifica antes de pendiente
 - Re-verifica contra PC antes de mostrar un pendiente visible por pérdida de confirmación al volver de WhatsApp.
+
+
+### v1.5.13 - logs depurados post-WhatsApp
+- Mantiene el fix de v1.5.12: verifica antes de dejar pendiente visible.
+- Evita reintentos/logs repetidos al volver desde WhatsApp si el pedido ya quedó OK recientemente.
+- Reduce logs técnicos: `PEDIDO_ID_CONGELADO`, bloqueos internos y WhatsApp duplicado no se guardan salvo `?debugLogs=1`.
+- No modifica backend/script, Admin, marcas ni modo de envío.

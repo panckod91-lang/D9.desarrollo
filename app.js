@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.12-prod (verifica antes de pendiente)";
+const APP_VERSION = "v1.5.13-prod (logs depurados)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -323,6 +323,19 @@ async function postAppLogPayloadD9(payload) {
 }
 
 function logAppEventD9(evento, data = {}) {
+  // v1.5.13: depuración de logs. Eventos puramente técnicos sólo se guardan en debug.
+  const debugLogs = new URLSearchParams(location.search || "").has("debugLogs");
+  if (!debugLogs && ["PEDIDO_ID_CONGELADO", "ENVIO_BLOQUEADO_LOCK", "ANTI_DUPLICADO_BLOQUEO"].includes(evento)) return;
+
+  if (!debugLogs && evento === "WHATSAPP_ABIERTO") {
+    const pedidoId = String(data?.payload?.pedido_id || data?.payload?.pedidoId || "").trim();
+    const key = "d9_last_log_whatsapp";
+    const last = readJSON(key, {});
+    const now = Date.now();
+    if (pedidoId && last?.pedido_id === pedidoId && now - Number(last?.at || 0) < 90000) return;
+    if (pedidoId) saveJSON(key, { pedido_id: pedidoId, at: now });
+  }
+
   const payload = buildAppLogPayloadD9(evento, data);
   if (!navigator.onLine) {
     enqueueAppLogD9(payload);
@@ -3688,6 +3701,37 @@ function markRecentOrderFingerprintD9(payload, ttlMs = 120000) {
   saveJSON("d9_recent_order_sends", recent.slice(-20));
 }
 
+function getRecentCompletedOrdersD9() {
+  const raw = readJSON("d9_recent_completed_orders", []);
+  return Array.isArray(raw) ? raw : [];
+}
+
+function cleanupRecentCompletedOrdersD9(ttlMs = 300000) {
+  const now = Date.now();
+  const clean = getRecentCompletedOrdersD9().filter(x => x && Number(x.until || 0) > now);
+  saveJSON("d9_recent_completed_orders", clean.slice(-30));
+  return clean;
+}
+
+function markOrderCompletedD9(payload, ttlMs = 300000) {
+  if (!payload) return;
+  const pedidoId = String(payload?.pedido_id || payload?.pedidoId || "").trim();
+  const fp = buildOrderFingerprint(payload);
+  if (!pedidoId && !fp) return;
+  const now = Date.now();
+  const recent = cleanupRecentCompletedOrdersD9(ttlMs).filter(x => x.pedido_id !== pedidoId && x.fp !== fp);
+  recent.push({ pedido_id: pedidoId, fp, at: now, until: now + ttlMs });
+  saveJSON("d9_recent_completed_orders", recent.slice(-30));
+}
+
+function isRecentlyCompletedOrderD9(payload, ttlMs = 300000) {
+  if (!payload) return false;
+  const pedidoId = String(payload?.pedido_id || payload?.pedidoId || "").trim();
+  const fp = buildOrderFingerprint(payload);
+  const recent = cleanupRecentCompletedOrdersD9(ttlMs);
+  return recent.some(x => (pedidoId && x.pedido_id === pedidoId) || (fp && x.fp === fp));
+}
+
 function isOrderSendLocked(payload = null) {
   const now = Date.now();
   if (state.isSending) return true;
@@ -4123,6 +4167,7 @@ async function savePendingOnlyAfterGraceD9(payload, reason = "No pude confirmar 
   if (verify?.ok) {
     const msg = "El pedido ya estaba cargado en PC. Se corrigió el estado local.";
     logAppEventD9("PEDIDO_CONFIRMADO_TRAS_ESPERA", { payload, resultado: "ok", detalle: msg });
+    markOrderCompletedD9(payload);
     saveHistory(payload, "ok", msg);
     removePendingRelatedToPayloadD9(payload, "confirmado tras espera");
     refreshPendingUiD9();
@@ -4816,26 +4861,32 @@ async function sendOrder() {
   if (validateOrder() !== true) return;
 
   const payload = buildOrderPayload();
+
+  // v1.5.13: antes de escribir logs o abrir WhatsApp, frenamos retornos/reintentos
+  // de un pedido que ya quedó OK recientemente. Esto evita ruido y segundos circuitos
+  // al volver desde WhatsApp.
+  if (isRecentlyCompletedOrderD9(payload, 300000)) {
+    toast("Ese pedido ya quedó cargado en PC.");
+    return;
+  }
+
+  if (isOrderSendLocked(payload)) {
+    return;
+  }
+
+  // D9 v1.3.17 / v1.5.13: candado persistente por huella de pedido.
+  // Si Android vuelve desde WhatsApp y dispara otra confirmación, no abrimos WhatsApp
+  // ni escribimos logs técnicos repetidos.
+  if (isRecentOrderFingerprintBlockedD9(payload, 300000)) {
+    toast("Este mismo pedido ya se envió hace instantes. Esperá un momento para repetirlo.");
+    return;
+  }
+
   // v1.5.7: el ID ya quedó copiado dentro de este payload.
   // Se libera inmediatamente el ID global del borrador para que el próximo pedido
   // no arrastre el mismo pedido_id mientras este envío sigue verificando en segundo plano.
   clearDraftPedidoIdD9();
-  logAppEventD9("PEDIDO_ID_CONGELADO", { payload, resultado: "ok", detalle: "ID fijado para este pedido y liberado para el próximo" });
   logAppEventD9("CONFIRMAR_ENVIO_TOCADO", { payload, resultado: "tap" });
-
-  if (isOrderSendLocked(payload)) {
-    logAppEventD9("ENVIO_BLOQUEADO_LOCK", { payload, resultado: "bloqueado", detalle: "isOrderSendLocked" });
-    return;
-  }
-
-  // D9 v1.3.17: candado persistente por huella de pedido.
-  // Evita que el mismo cliente + mismos productos + mismo total se cargue dos veces
-  // si Android vuelve de WhatsApp, se repite un tap, o queda un reintento viejo dando vueltas.
-  if (isRecentOrderFingerprintBlockedD9(payload, 120000)) {
-    logAppEventD9("ANTI_DUPLICADO_BLOQUEO", { payload, resultado: "bloqueado", detalle: "fingerprint reciente" });
-    toast("Este mismo pedido ya se envió hace instantes. Esperá un momento para repetirlo.");
-    return;
-  }
 
   lockOrderSend(payload, 300000);
 
@@ -4900,11 +4951,13 @@ async function sendOrder() {
         if (res?.data?.duplicated) {
           const msg = res?.data?.message || "Ya estaba cargado en PC. No se duplicó.";
           logAppEventD9("PEDIDO_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
+          markOrderCompletedD9(payload);
           saveHistory(payload, "ok", msg);
           removePendingRelatedToPayloadD9(payload, "duplicado controlado");
           toast(msg);
         } else {
           logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: "ok", detalle: res?.data?.message || "Enviado correctamente" });
+          markOrderCompletedD9(payload);
           saveHistory(payload, "ok", "Enviado correctamente");
           removePendingRelatedToPayloadD9(payload, "envío confirmado OK");
         }

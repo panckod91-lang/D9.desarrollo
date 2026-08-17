@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-pedidos-v1512-verifica-antes-pendiente";
+const CACHE_NAME = "d9-pedidos-v1513-logs-depurados";
 const URLS = [
   "./",
   "./index.html",
