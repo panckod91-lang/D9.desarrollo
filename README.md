@@ -40,3 +40,9 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - Si el backend respondió `ok:true`, no se convierte el pedido en pendiente por una verificación posterior demasiado estricta.
 - Apunta a eliminar warnings falsos al volver desde WhatsApp cuando el pedido ya está cargado en `pedidos`.
 - Mantiene el fix de ID congelado/liberado de v1.5.7.
+
+
+## v1.5.10 - retorno sin reintento
+- Limpia pendientes falsos al volver de WhatsApp.
+- Verificación más fiel contra hoja pedidos (`id_prod`, cantidad en `total`, total en `total_pedido`).
+- Evita liberar el flujo antes de que termine la confirmación con Sheets.

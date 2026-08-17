@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.9-prod (limpia pendientes falsos)";
+const APP_VERSION = "v1.5.10-prod (retorno sin reintento)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -3975,11 +3975,14 @@ function getPcRowVendedorIdD9(row) {
 }
 
 function getPcRowTotalPedidoD9(row) {
-  return pickPcValueD9(row, ["total_pedido", "total", "total pedido", "Total Pedido"]);
+  // En la hoja pedidos, la columna "total" es la cantidad del item;
+  // el total real del pedido está en "total_pedido".
+  // Antes caíamos a "total" y la verificación decía falso "otro pedido".
+  return pickPcValueD9(row, ["total_pedido", "total pedido", "totalpedido", "Total Pedido", "importe_total", "monto_total"]);
 }
 
 function getPcRowProductoIdD9(row) {
-  return String(pickPcValueD9(row, ["id_producto", "producto_id", "codigo", "código", "cod", "Codigo", "Código"]) || "").trim();
+  return String(pickPcValueD9(row, ["id_prod", "id producto", "id_producto", "producto_id", "prod_id", "codigo", "código", "cod", "Codigo", "Código"]) || "").trim();
 }
 
 function getPcRowProductoNombreD9(row) {
@@ -3987,7 +3990,8 @@ function getPcRowProductoNombreD9(row) {
 }
 
 function getPcRowCantidadD9(row) {
-  return pickPcValueD9(row, ["cantidad", "cant", "Cantidad"]);
+  // En pedidos, la cantidad del item quedó históricamente bajo el header "total".
+  return pickPcValueD9(row, ["cantidad", "cant", "Cantidad", "total"]);
 }
 
 function getPcRowPrecioD9(row) {
@@ -4818,45 +4822,61 @@ async function sendOrder() {
 
     logAppEventD9("WHATSAPP_ABIERTO", { payload, resultado: "ok", detalle: waPhone ? `destino:${waPhone}` : "sin destino" });
 
-    trySendToWebhook(payload)
-      .then(res => {
-        if (!res || !res.ok) {
+    try {
+      // v1.5.10: esperamos la confirmación. Antes el envío seguía en segundo plano,
+      // el finally liberaba el botón/candado, y al volver de WhatsApp Android podía
+      // disparar otra confirmación del mismo pedido, creando pendiente falso.
+      const res = await trySendToWebhook(payload);
+      if (!res || !res.ok) {
+        // Última defensa antes de crear pendiente: si ya está en PC con este mismo
+        // contenido, NO guardar pendiente falso.
+        const verify = await verifyPedidoInPcD9(payload, 2);
+        if (verify?.ok) {
+          const msg = "El pedido ya estaba cargado en PC. Se limpió el pendiente local.";
+          logAppEventD9("PEDIDO_YA_ESTABA_EN_PC", { payload, resultado: "ok", detalle: msg });
+          saveHistory(payload, "ok", msg);
+          removePendingRelatedToPayloadD9(payload, "confirmado en PC antes de pendiente");
+          toast(msg);
+        } else {
           savePendingPayload(payload);
           logAppEventD9("PEDIDO_ENVIADO_SHEETS_ERROR", { payload, resultado: "pendiente", error: res?.error || "No pude confirmar el envío" });
           saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
-          // IMPORTANTE: el pedido ya salió por WhatsApp y quedó guardado con su ID.
-          // Limpiamos el borrador para que el próximo pedido NO reutilice el mismo ID.
-          clearDraftPedidoIdD9();
           refreshPendingUiD9();
           schedulePendingHomeRefreshD9();
           console.warn("Pedido pendiente:", res?.error);
-        } else {
-          if (res?.data?.duplicated) {
-            const msg = res?.data?.message || "Ya estaba cargado en PC. No se duplicó.";
-            logAppEventD9("PEDIDO_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
-            saveHistory(payload, "ok", msg);
-            removePendingRelatedToPayloadD9(payload, "duplicado controlado");
-            toast(msg);
-          } else {
-            logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: "ok", detalle: res?.data?.message || "Enviado correctamente" });
-            saveHistory(payload, "ok", "Enviado correctamente");
-            removePendingRelatedToPayloadD9(payload, "envío confirmado OK");
-          }
-          clearDraftPedidoIdD9();
-          refreshPendingUiD9();
-          schedulePendingHomeRefreshD9();
         }
-      })
-      .catch(err => {
+      } else {
+        if (res?.data?.duplicated) {
+          const msg = res?.data?.message || "Ya estaba cargado en PC. No se duplicó.";
+          logAppEventD9("PEDIDO_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
+          saveHistory(payload, "ok", msg);
+          removePendingRelatedToPayloadD9(payload, "duplicado controlado");
+          toast(msg);
+        } else {
+          logAppEventD9("PEDIDO_ENVIADO_SHEETS_OK", { payload, resultado: "ok", detalle: res?.data?.message || "Enviado correctamente" });
+          saveHistory(payload, "ok", "Enviado correctamente");
+          removePendingRelatedToPayloadD9(payload, "envío confirmado OK");
+        }
+        refreshPendingUiD9();
+        schedulePendingHomeRefreshD9();
+      }
+    } catch (err) {
+      const verify = await verifyPedidoInPcD9(payload, 2);
+      if (verify?.ok) {
+        const msg = "El pedido ya estaba cargado en PC. Se limpió el pendiente local.";
+        logAppEventD9("PEDIDO_YA_ESTABA_EN_PC", { payload, resultado: "ok", detalle: msg });
+        saveHistory(payload, "ok", msg);
+        removePendingRelatedToPayloadD9(payload, "confirmado en PC tras error");
+        toast(msg);
+      } else {
         savePendingPayload(payload);
         logAppEventD9("PEDIDO_ENVIADO_SHEETS_ERROR", { payload, resultado: "catch", error: String(err) });
         saveHistory(payload, "pendiente", String(err));
-        // También en error total: el próximo pedido debe nacer con ID nuevo.
-        clearDraftPedidoIdD9();
         refreshPendingUiD9();
         schedulePendingHomeRefreshD9();
         console.error("Error total, guardado local:", err);
-      });
+      }
+    }
 
     pulseSuccess(sendBtn, "Enviado");
   } finally {
@@ -5117,6 +5137,17 @@ async function syncPending() {
       try {
         if (isHistoryResolvedForPendingD9(item)) {
           logAppEventD9("PENDIENTE_DESCARTADO_YA_REENVIADO", { payload: item, resultado: "ok", detalle: "Ya figura cargado/reenvíado en historial" });
+          continue;
+        }
+
+        // v1.5.10: antes de reenviar un pendiente, verificamos si ya está en PC.
+        // Esto limpia pendientes falsos generados al volver de WhatsApp, sin volver a mandar.
+        const existsInPc = await verifyPedidoInPcD9(item, 2);
+        if (existsInPc?.ok) {
+          sentCount++;
+          const msg = "Ya estaba cargado en PC. Se limpió pendiente local.";
+          logAppEventD9("PENDIENTE_DESCARTADO_YA_EN_PC", { payload: item, resultado: "ok", detalle: msg });
+          updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", msg);
           continue;
         }
 
