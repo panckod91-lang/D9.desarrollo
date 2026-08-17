@@ -46,3 +46,7 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - Limpia pendientes falsos al volver de WhatsApp.
 - Verificación más fiel contra hoja pedidos (`id_prod`, cantidad en `total`, total en `total_pedido`).
 - Evita liberar el flujo antes de que termine la confirmación con Sheets.
+
+
+## v1.5.12 - verifica antes de pendiente
+- Re-verifica contra PC antes de mostrar un pendiente visible por pérdida de confirmación al volver de WhatsApp.

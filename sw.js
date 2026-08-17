@@ -1,4 +1,4 @@
-const CACHE_NAME = "d9-pedidos-v1511-cierre-visual-whatsapp";
+const CACHE_NAME = "d9-pedidos-v1512-verifica-antes-pendiente";
 const URLS = [
   "./",
   "./index.html",

@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.11-prod (cierre visual WhatsApp)";
+const APP_VERSION = "v1.5.12-prod (verifica antes de pendiente)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -4102,6 +4102,42 @@ async function verifyPedidoInPcD9(pedidoOrPayload, attempts = 3) {
   return { ok: false, error: lastError };
 }
 
+
+async function verifyPedidoInPcGraceD9(payload, attempts = 4) {
+  // D9 v1.5.12:
+  // Si el POST perdió la respuesta al volver de WhatsApp, muchas veces el pedido
+  // ya está escrito en Sheets, pero list_pedidos todavía falla o tarda unos segundos.
+  // Antes de mostrarlo como pendiente visible, esperamos y verificamos varias veces.
+  let last = { ok: false, error: "La PC no confirmó que el pedido haya quedado cargado" };
+  const delays = [1200, 2500, 4500, 7000];
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await delayD9(delays[Math.min(i - 1, delays.length - 1)]);
+    last = await verifyPedidoInPcD9(payload, 2);
+    if (last?.ok) return last;
+  }
+  return last;
+}
+
+async function savePendingOnlyAfterGraceD9(payload, reason = "No pude confirmar el envío") {
+  const verify = await verifyPedidoInPcGraceD9(payload, 4);
+  if (verify?.ok) {
+    const msg = "El pedido ya estaba cargado en PC. Se corrigió el estado local.";
+    logAppEventD9("PEDIDO_CONFIRMADO_TRAS_ESPERA", { payload, resultado: "ok", detalle: msg });
+    saveHistory(payload, "ok", msg);
+    removePendingRelatedToPayloadD9(payload, "confirmado tras espera");
+    refreshPendingUiD9();
+    schedulePendingHomeRefreshD9();
+    return { ok: true, verified: true, message: msg };
+  }
+
+  savePendingPayload(payload);
+  logAppEventD9("PEDIDO_PENDIENTE_CONFIRMACION", { payload, resultado: "pendiente", error: verify?.error || reason });
+  saveHistory(payload, "pendiente", verify?.error || reason);
+  refreshPendingUiD9();
+  schedulePendingHomeRefreshD9();
+  return { ok: false, error: verify?.error || reason };
+}
+
 async function trySendToWebhook(payload) {
   if (!Array.isArray(WEBHOOK_ENDPOINTS) || !WEBHOOK_ENDPOINTS.length) {
     return { ok: false, error: "Webhook no configurado" };
@@ -4857,21 +4893,9 @@ async function sendOrder() {
       if (!res || !res.ok) {
         // Última defensa antes de crear pendiente: si ya está en PC con este mismo
         // contenido, NO guardar pendiente falso.
-        const verify = await verifyPedidoInPcD9(payload, 2);
-        if (verify?.ok) {
-          const msg = "El pedido ya estaba cargado en PC. Se limpió el pendiente local.";
-          logAppEventD9("PEDIDO_YA_ESTABA_EN_PC", { payload, resultado: "ok", detalle: msg });
-          saveHistory(payload, "ok", msg);
-          removePendingRelatedToPayloadD9(payload, "confirmado en PC antes de pendiente");
-          toast(msg);
-        } else {
-          savePendingPayload(payload);
-          logAppEventD9("PEDIDO_ENVIADO_SHEETS_ERROR", { payload, resultado: "pendiente", error: res?.error || "No pude confirmar el envío" });
-          saveHistory(payload, "pendiente", res?.error || "No pude confirmar el envío");
-          refreshPendingUiD9();
-          schedulePendingHomeRefreshD9();
-          console.warn("Pedido pendiente:", res?.error);
-        }
+        const pendingResult = await savePendingOnlyAfterGraceD9(payload, res?.error || "No pude confirmar el envío");
+        if (pendingResult?.ok) toast(pendingResult.message || "Pedido confirmado en PC.");
+        else console.warn("Pedido pendiente:", pendingResult?.error);
       } else {
         if (res?.data?.duplicated) {
           const msg = res?.data?.message || "Ya estaba cargado en PC. No se duplicó.";
@@ -4888,21 +4912,9 @@ async function sendOrder() {
         schedulePendingHomeRefreshD9();
       }
     } catch (err) {
-      const verify = await verifyPedidoInPcD9(payload, 2);
-      if (verify?.ok) {
-        const msg = "El pedido ya estaba cargado en PC. Se limpió el pendiente local.";
-        logAppEventD9("PEDIDO_YA_ESTABA_EN_PC", { payload, resultado: "ok", detalle: msg });
-        saveHistory(payload, "ok", msg);
-        removePendingRelatedToPayloadD9(payload, "confirmado en PC tras error");
-        toast(msg);
-      } else {
-        savePendingPayload(payload);
-        logAppEventD9("PEDIDO_ENVIADO_SHEETS_ERROR", { payload, resultado: "catch", error: String(err) });
-        saveHistory(payload, "pendiente", String(err));
-        refreshPendingUiD9();
-        schedulePendingHomeRefreshD9();
-        console.error("Error total, guardado local:", err);
-      }
+      const pendingResult = await savePendingOnlyAfterGraceD9(payload, String(err));
+      if (pendingResult?.ok) toast(pendingResult.message || "Pedido confirmado en PC.");
+      else console.error("Error total, guardado local:", pendingResult?.error || err);
     }
 
     pulseSuccess(sendBtn, "Enviado");
