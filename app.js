@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.13-prod (logs depurados)";
+const APP_VERSION = "v1.5.14-prod (mensaje OK cordial)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -4165,7 +4165,7 @@ async function verifyPedidoInPcGraceD9(payload, attempts = 4) {
 async function savePendingOnlyAfterGraceD9(payload, reason = "No pude confirmar el envío") {
   const verify = await verifyPedidoInPcGraceD9(payload, 4);
   if (verify?.ok) {
-    const msg = "El pedido ya estaba cargado en PC. Se corrigió el estado local.";
+    const msg = "Pedido cargado correctamente en PC.";
     logAppEventD9("PEDIDO_CONFIRMADO_TRAS_ESPERA", { payload, resultado: "ok", detalle: msg });
     markOrderCompletedD9(payload);
     saveHistory(payload, "ok", msg);
@@ -4206,7 +4206,7 @@ async function trySendToWebhook(payload) {
             duplicated: true,
             pedido_id: sendPayload.pedido_id,
             verified_after_error: true,
-            message: "El pedido ya estaba cargado en PC. Se corrigió el estado local."
+            message: "Pedido cargado correctamente en PC."
           }
         };
       }
@@ -4260,7 +4260,7 @@ async function trySendToWebhook(payload) {
                 duplicated: true,
                 pedido_id: sendPayload.pedido_id,
                 verified_after_collision: true,
-                message: "El pedido ya estaba cargado en PC. Se limpió el pendiente local."
+                message: "Pedido cargado correctamente en PC."
               }
             };
           }
@@ -4653,7 +4653,7 @@ async function manualLoadHistoryItemsToPcD9(ids) {
       const res = await trySendToWebhook(payload);
       if (res?.ok) {
         ok++;
-        const msg = res?.data?.duplicated ? "Ya estaba cargado en PC. No se duplicó." : "Cargado manualmente en PC";
+        const msg = res?.data?.duplicated ? "Pedido cargado correctamente en PC." : "Cargado manualmente en PC";
         logAppEventD9(res?.data?.duplicated ? "REENVIO_HISTORIAL_DUPLICADO_CONTROLADO" : "REENVIO_HISTORIAL_OK", { payload, resultado: "ok", detalle: msg });
         updateHistoryItemByLocalIdD9(localId, {
           pedido_id: payload.pedido_id,
@@ -4818,7 +4818,7 @@ async function resyncHistoryItemsToPcD9(ids) {
       if (res?.ok) {
         ok++;
         if (res?.data?.duplicated) {
-          const msg = "Ya estaba cargado en PC. No se duplicó.";
+          const msg = "Pedido cargado correctamente en PC.";
           logAppEventD9("REENVIO_HISTORIAL_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
           updateHistoryStatusByPedidoIdD9(payload.pedido_id, "ok", msg);
           removePendingRelatedToPayloadD9(payload, "duplicado controlado");
@@ -4866,7 +4866,7 @@ async function sendOrder() {
   // de un pedido que ya quedó OK recientemente. Esto evita ruido y segundos circuitos
   // al volver desde WhatsApp.
   if (isRecentlyCompletedOrderD9(payload, 300000)) {
-    toast("Ese pedido ya quedó cargado en PC.");
+    toast("Pedido cargado correctamente en PC.");
     return;
   }
 
@@ -4949,7 +4949,7 @@ async function sendOrder() {
         else console.warn("Pedido pendiente:", pendingResult?.error);
       } else {
         if (res?.data?.duplicated) {
-          const msg = res?.data?.message || "Ya estaba cargado en PC. No se duplicó.";
+          const msg = res?.data?.message || "Pedido cargado correctamente en PC.";
           logAppEventD9("PEDIDO_DUPLICADO_CONTROLADO", { payload, resultado: "ok", detalle: msg });
           markOrderCompletedD9(payload);
           saveHistory(payload, "ok", msg);
@@ -5237,7 +5237,7 @@ async function syncPending() {
         const existsInPc = await verifyPedidoInPcD9(item, 2);
         if (existsInPc?.ok) {
           sentCount++;
-          const msg = "Ya estaba cargado en PC. Se limpió pendiente local.";
+          const msg = "Pedido cargado correctamente en PC.";
           logAppEventD9("PENDIENTE_DESCARTADO_YA_EN_PC", { payload: item, resultado: "ok", detalle: msg });
           updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", msg);
           continue;
@@ -5247,7 +5247,7 @@ async function syncPending() {
         if (result.ok) {
           sentCount++;
           if (result?.data?.duplicated) {
-            const msg = "Ya estaba cargado en PC. No se duplicó.";
+            const msg = "Pedido cargado correctamente en PC.";
             logAppEventD9("PENDIENTE_SYNC_DUPLICADO_CONTROLADO", { payload: item, resultado: "ok", detalle: msg });
             updateHistoryStatusByPedidoIdD9(item?.pedido_id || item?.pedidoId, "ok", msg);
           } else {

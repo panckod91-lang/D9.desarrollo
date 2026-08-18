@@ -52,6 +52,12 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - Re-verifica contra PC antes de mostrar un pendiente visible por pérdida de confirmación al volver de WhatsApp.
 
 
+### v1.5.14 - mensaje OK cordial
+
+- Base v1.5.13.
+- Cambia los avisos visibles de duplicado controlado / ya estaba en PC por: "Pedido cargado correctamente en PC."
+- Sin cambios de backend, Admin, marcas ni lista.
+
 ### v1.5.13 - logs depurados post-WhatsApp
 - Mantiene el fix de v1.5.12: verifica antes de dejar pendiente visible.
 - Evita reintentos/logs repetidos al volver desde WhatsApp si el pedido ya quedó OK recientemente.
