@@ -17,10 +17,10 @@
 <meta name="twitter:title" content="Distribuidora 9 - Pedidos" />
 <meta name="twitter:description" content="Tomá pedidos rápido y fácil." />
 <meta name="twitter:image" content="https://pd9-cloud.pages.dev/og-d9.jpg" />
-  <link rel="manifest" href="manifest.json?v=d9-prod-v4" />
+  <link rel="manifest" href="manifest.json?v=d9-dev-v1516" />
   <link rel="icon" href="icons/d9-icon-192-v2.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/d9-icon-192-v2.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=1516-dev" />
 </head>
 <body>
   <div class="app-shell app-shell-vnext">
@@ -303,7 +303,10 @@
   <div id="loginModal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop"></div>
     <div class="modal-panel">
-      <h3>Ingreso de usuario</h3>
+      <div class="login-mode-head-d9">
+        <h3>Ingreso de usuario</h3>
+        <button id="btnModeToggleD9" class="mode-toggle-d9 hidden" type="button" aria-pressed="false">Modo normal</button>
+      </div>
       <p class="modal-text">Entrá con tu usuario y clave o seguí en modo invitado.</p>
       <input id="sellerUser" class="input login-select" type="text" placeholder="Usuario" autocomplete="username" />
       <input id="sellerPass" class="input" type="password" placeholder="Clave" autocomplete="current-password" />
@@ -378,7 +381,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=1516-dev"></script>
 
   <div id="priceCategoryModal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop" data-close-modal="priceCategory"></div>

@@ -17,6 +17,19 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - `app.js`: lógica de datos, pedidos, historial, pendientes y sincronización.
 - `sw.js`: service worker para cache offline de archivos propios.
 - `manifest.json`: configuración PWA.
+- `MODO_SIMPLE_Y_LISTAS.md`: activación en la Sheet y prueba segura en desarrollo.
+
+## v1.5.16-dev - selector de modo y listas por cliente
+
+- Agrega un botón `Modo normal / Modo simple` dentro de Ingreso de usuario.
+- La elección queda guardada por usuario en ese celular o PC; no requiere columnas nuevas ni cambios en Apps Script.
+- El modo simple muestra un inicio reducido, botones grandes y un recorrido guiado: cliente → productos → pedido.
+- Prioriza clientes y productos usados recientemente en el dispositivo.
+- Conserva historial y pendientes de forma secundaria, sin eliminarlos.
+- Recupera la asignación de precios desde `clientes.lista_precio` (`lista_1`, `lista_2` o `lista_3`).
+- El modo normal permite cambiar la lista para un pedido y modificar el precio unitario de una línea sin alterar la Sheet.
+- Los pedidos guardan la lista utilizada y qué precios fueron modificados manualmente; el backend actual puede ignorar esos campos sin romper compatibilidad.
+- El parámetro `?modoSimple=1` queda disponible únicamente como prueba técnica opcional.
 
 ## Limpieza aplicada
 
