@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.20-dev (ofertas visibles y selector de lista discreto)";
+const APP_VERSION = "v1.5.21-dev (Lista 1 como precio base y respaldo)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2465,6 +2465,11 @@ function productPrice(product) {
   const byList = parseD9Number(source?.precios?.[key] || 0);
   if (byList > 0) return byList;
 
+  // D9: Lista 1 es el precio base obligatorio. Las listas alternativas
+  // pueden quedar vacías y, en ese caso, heredan el precio de Lista 1.
+  const basePrice = parseD9Number(source?.precios?.lista_1 || 0);
+  if (basePrice > 0) return basePrice;
+
   // Fallback defensivo: nunca pisar con 0 un precio que venía guardado en historial.
   return parseD9Number(product?.precio || product?.price || product?.precio_unitario || 0);
 }
@@ -2884,7 +2889,11 @@ function renderPriceBrandModal() {
 
 
 function productHasValidPrice(p) {
-  return Number(productPrice(p)) > 0;
+  const itemId = String(p?.id || p?.id_producto || p?.producto_id || "").trim();
+  const source = p?.precios && typeof p.precios === "object"
+    ? p
+    : state.products.find(item => String(item.id || "").trim() === itemId) || p;
+  return parseD9Number(source?.precios?.lista_1 || 0) > 0;
 }
 
 function sortByName(a, b) {
