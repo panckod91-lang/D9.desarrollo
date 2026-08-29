@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.21-dev (Lista 1 como precio base y respaldo)";
+const APP_VERSION = "v1.5.22-dev (oferta manual y respaldo de Lista 1 visible)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2450,17 +2450,18 @@ function priceLabel(key) {
   return labels[key] || key || "Lista";
 }
 
-function productPrice(product) {
-  const key = getActivePriceList();
+function productCatalogSourceD9(product) {
   let source = product;
-
-  // D9: al reutilizar desde historial el item trae id/nombre/precio,
-  // pero no trae el objeto completo con precios por lista.
-  // Si existe en catálogo, usamos el catálogo para recalcular según cliente/lista.
   const itemId = String(product?.id || product?.id_producto || product?.producto_id || "").trim();
   if ((!source?.precios || typeof source.precios !== "object") && itemId && Array.isArray(state.products)) {
     source = state.products.find(p => String(p.id || "").trim() === itemId) || source;
   }
+  return source;
+}
+
+function productPrice(product) {
+  const key = getActivePriceList();
+  const source = productCatalogSourceD9(product);
 
   const byList = parseD9Number(source?.precios?.[key] || 0);
   if (byList > 0) return byList;
@@ -2472,6 +2473,15 @@ function productPrice(product) {
 
   // Fallback defensivo: nunca pisar con 0 un precio que venía guardado en historial.
   return parseD9Number(product?.precio || product?.price || product?.precio_unitario || 0);
+}
+
+function productUsesListOneFallbackD9(product) {
+  const key = getActivePriceList();
+  if (key === "lista_1") return false;
+  const source = productCatalogSourceD9(product);
+  const selectedPrice = parseD9Number(source?.precios?.[key] || 0);
+  const basePrice = parseD9Number(source?.precios?.lista_1 || 0);
+  return selectedPrice <= 0 && basePrice > 0;
 }
 
 const OFFERS_CATEGORY_D9 = "__d9_ofertas__";
@@ -2889,10 +2899,7 @@ function renderPriceBrandModal() {
 
 
 function productHasValidPrice(p) {
-  const itemId = String(p?.id || p?.id_producto || p?.producto_id || "").trim();
-  const source = p?.precios && typeof p.precios === "object"
-    ? p
-    : state.products.find(item => String(item.id || "").trim() === itemId) || p;
+  const source = productCatalogSourceD9(p);
   return parseD9Number(source?.precios?.lista_1 || 0) > 0;
 }
 
@@ -2922,6 +2929,7 @@ function productMetaLine(p, includePrice = true) {
   const parts = [];
   if (code) parts.push(`Cód. ${code}`);
   if (includePrice) parts.push(`${money(productPrice(p))} c/u`);
+  if (includePrice && productUsesListOneFallbackD9(p)) parts.push("respaldo Lista 1");
   return parts.join(" · ");
 }
 
@@ -2934,9 +2942,10 @@ function itemMetaLine(item) {
 }
 
 function cartItemMetaLineD9(item) {
-  if (!item?.usa_oferta) return itemMetaLine(item);
+  const fallbackLabel = productUsesListOneFallbackD9(item) ? " · respaldo Lista 1" : "";
+  if (!item?.usa_oferta) return itemMetaLine(item) + fallbackLabel;
   const normalPrice = Number(item.precio_lista || productPrice(item) || 0);
-  return itemMetaLine({ ...item, precio: normalPrice });
+  return itemMetaLine({ ...item, precio: normalPrice }) + fallbackLabel;
 }
 
 
@@ -3543,7 +3552,7 @@ function renderProducts() {
           <div class="product-copy product-main-d9" ${selected ? 'data-no-toggle="true"' : ''}>
             <strong>${esc(p.nombre)}</strong>
             <div class="option-meta">${esc(productMetaLine(p))}</div>
-            ${offer?`<div class="option-meta offer-meta-d9">🔥 ${money(offer.precio_oferta)} <del>${money(productPrice(p))}</del></div>`:""}
+            ${offer?`<div class="option-meta offer-meta-d9">🔥 Oferta disponible ${money(offer.precio_oferta)}</div>`:""}
             ${term && cat && p.categoria !== cat ? `<div class="option-meta product-cross-category-d9">Cat. ${esc(cleanCategory(p.categoria))}</div>` : ""}
             ${!term && !cat && isSimpleSellerD9() ? '<div class="option-meta simple-recent-d9">Usado recientemente</div>' : ''}
           </div>
@@ -3576,7 +3585,7 @@ function toggleProduct(id) {
     } else {
       const p = state.products.find(x => String(x.id) === String(id));
       if (!p) return;
-      const item={ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 };setItemOfferPriceD9(item,(state.mostradorCategory===OFFERS_CATEGORY_D9));state.mostradorCart.push(item);
+      const item={ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 };setItemOfferPriceD9(item,false);state.mostradorCart.push(item);
     }
     renderProducts();
     renderMostradorD9();
@@ -3588,7 +3597,7 @@ function toggleProduct(id) {
   } else {
     const p = state.products.find(x => x.id === id);
     if (!p) return;
-    const item={ ...p, precio: productPrice(p), cantidad: 1 };setItemOfferPriceD9(item,state.selectedCategory===OFFERS_CATEGORY_D9);state.cart.push(item);
+    const item={ ...p, precio: productPrice(p), cantidad: 1 };setItemOfferPriceD9(item,false);state.cart.push(item);
   }
   renderProducts();
   renderQuickLabels();
@@ -5988,7 +5997,12 @@ function bind() {
     const defaultList = normalizePriceListKeyD9(state.selectedClient?.lista_precio || state.selectedClient?.lista_1 || "lista_1");
     state.manualPriceOverride = !!state.selectedClient && next !== defaultList;
     refreshPricesAcrossApp();
-    if (state.cart.length) toast(`Se aplicó ${priceLabel(next)} al pedido.`);
+    if (state.cart.length) {
+      const fallbackCount = state.cart.filter(productUsesListOneFallbackD9).length;
+      toast(fallbackCount
+        ? `${priceLabel(next)} aplicada · ${fallbackCount} ${fallbackCount === 1 ? "producto usa" : "productos usan"} Lista 1.`
+        : `Se aplicó ${priceLabel(next)} al pedido.`);
+    }
   });
   $("#btnClearCart").addEventListener("click", clearCart);
   $("#orderNoteGeneralD9")?.addEventListener("input", (e) => setOrderNoteGeneralD9(e.target.value));
