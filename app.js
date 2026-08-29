@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.19-dev (pedido compacto y filtro por marca)";
+const APP_VERSION = "v1.5.20-dev (ofertas visibles y selector de lista discreto)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -2924,6 +2924,12 @@ function itemMetaLine(item) {
   return parts.join(" · ");
 }
 
+function cartItemMetaLineD9(item) {
+  if (!item?.usa_oferta) return itemMetaLine(item);
+  const normalPrice = Number(item.precio_lista || productPrice(item) || 0);
+  return itemMetaLine({ ...item, precio: normalPrice });
+}
+
 
 function renderPriceProducts() {
   const box = $("#priceProductsList");
@@ -3845,8 +3851,8 @@ function renderCart() {
         <div class="cart-top">
           <div>
             <strong>${esc(item.nombre)}</strong>
-            <div class="mini-text">${esc(itemMetaLine(item))}</div>
-            ${activeOfferD9(item.id)?`<button class="qty-edit-btn-d9 offer-toggle-d9 ${item.usa_oferta?'has-offer-d9':''}" data-toggle-offer-d9="${esc(item.id)}" type="button">${item.usa_oferta?`🔥 Oferta aplicada ${money(item.precio)}`:`Usar oferta ${money(activeOfferD9(item.id).precio_oferta)}`}</button>`:""}
+            <div class="mini-text">${esc(cartItemMetaLineD9(item))}</div>
+            ${activeOfferD9(item.id)?`<button class="qty-edit-btn-d9 offer-toggle-d9 ${item.usa_oferta?'has-offer-d9':''}" data-toggle-offer-d9="${esc(item.id)}" type="button">${item.usa_oferta?`🔥 Oferta aplicada ${money(item.precio)}`:`🔥 Usar oferta ${money(activeOfferD9(item.id).precio_oferta)}`}</button>`:""}
           </div>
           <button class="remove-btn cart-trash-btn-d9" data-remove-id="${esc(item.id)}" type="button" title="Quitar producto" aria-label="Quitar producto">🗑️</button>
         </div>

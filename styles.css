@@ -4552,16 +4552,16 @@ body.simple-mode-d9 #btnSend{
 }
 .offer-meta-d9{color:#b45309!important;font-weight:800}.offer-meta-d9 del{color:#7b8794;font-weight:500;margin-left:6px}.offer-toggle-d9{margin-top:7px}.offer-toggle-d9.has-offer-d9{background:#fff1c7!important;border-color:#f59e0b!important;color:#8a4b00!important}
 
-/* v1.5.19 · pedido más compacto: filtros dentro de Productos */
+/* v1.5.20 · ofertas visibles y selector de lista discreto */
 .product-filter-bar-d9{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-top:8px}
 .product-filter-btn-d9{min-width:0;min-height:58px;padding:8px 12px;border:1.5px solid #c8dce8;border-radius:17px;background:#f3f9fc;color:#18324c;text-align:left;box-shadow:none}
 .product-filter-btn-d9 span{display:block;font-size:.72rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;color:#2789aa}
 .product-filter-btn-d9 strong{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.96rem}
 #brandModal.front-modal-d9{z-index:999999!important}
 #brandModal.front-modal-d9 .modal-panel{position:relative;z-index:1000000}
-.order-price-strip-d9{display:flex;align-items:center;gap:10px;margin:10px 18px 14px;padding:7px 10px 7px 14px;border:1px solid #d2e2eb;border-radius:16px;background:rgba(255,255,255,.72);box-shadow:0 5px 14px rgba(43,91,120,.07)}
-.order-price-label-d9{flex:0 0 auto;color:#688093;font-size:.78rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em}
-.order-price-strip-d9 #orderPriceListSelect{flex:1;min-width:0;min-height:42px;height:42px;padding:4px 34px 4px 10px;border:0;background-color:transparent;font-size:.96rem;font-weight:800;color:#24425d;box-shadow:none}
+.order-price-strip-d9{display:flex;align-items:center;gap:5px;width:max-content;max-width:calc(100% - 36px);margin:3px 18px 10px auto;padding:2px 4px 2px 9px;border:1px solid rgba(162,190,205,.48);border-radius:12px;background:rgba(255,255,255,.42);box-shadow:none}
+.order-price-label-d9{flex:0 0 auto;color:#82919d;font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.07em}
+.order-price-strip-d9 #orderPriceListSelect{flex:0 1 auto;width:auto;max-width:230px;min-width:0;min-height:34px;height:34px;padding:2px 30px 2px 6px;border:0;background-color:transparent;font-size:.85rem;font-weight:750;color:#3d566a;box-shadow:none}
 .order-price-info-d9{display:none!important}
 .order-price-strip-d9.is-overridden{border-color:#f0b44c;background:#fff9ea}
-@media(max-width:520px){.order-price-strip-d9{margin:8px 14px 12px}.product-filter-btn-d9{min-height:55px;padding:7px 10px}.product-filter-btn-d9 strong{font-size:.9rem}}
+@media(max-width:520px){.order-price-strip-d9{max-width:calc(100% - 28px);margin:3px 14px 9px auto}.product-filter-btn-d9{min-height:55px;padding:7px 10px}.product-filter-btn-d9 strong{font-size:.9rem}}
