@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.16-dev (selector simple + listas por cliente)";
+const APP_VERSION = "v1.5.18-dev (productos en oferta)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -29,6 +29,7 @@ const CACHE_KEYS = {
   users: "d9_cache_users",
   clients: "d9_cache_clients",
   products: "d9_cache_products",
+  offers: "d9_cache_offers",
   ads: "d9_cache_ads",
   support: "d9_cache_support",
   lastSync: "d9_cache_last_sync"
@@ -39,6 +40,7 @@ const state = {
   users: [],
   clients: [],
   products: [],
+  offers: [],
   ads: [],
   support: {},
   seller: null,
@@ -526,6 +528,7 @@ function hydrateCacheState() {
   state.users = readJSON(CACHE_KEYS.users, state.users || []);
   state.clients = readJSON(CACHE_KEYS.clients, state.clients || []);
   state.products = readJSON(CACHE_KEYS.products, state.products || []);
+  state.offers = readJSON(CACHE_KEYS.offers, state.offers || []);
   state.ads = readJSON(CACHE_KEYS.ads, state.ads || []);
   state.support = readJSON(CACHE_KEYS.support, state.support || {});
 }
@@ -534,6 +537,7 @@ function persistCacheState() {
   saveJSON(CACHE_KEYS.users, state.users || []);
   saveJSON(CACHE_KEYS.clients, state.clients || []);
   saveJSON(CACHE_KEYS.products, state.products || []);
+  saveJSON(CACHE_KEYS.offers, state.offers || []);
   saveJSON(CACHE_KEYS.ads, state.ads || []);
   saveJSON(CACHE_KEYS.support, state.support || {});
   localStorage.setItem(CACHE_KEYS.lastSync, String(Date.now()));
@@ -1472,6 +1476,7 @@ async function loadAllData() {
   const sellers  = Array.isArray(data.usuarios)   ? data.usuarios   : [];
   const clients  = Array.isArray(data.clientes)   ? data.clientes   : [];
   const products = Array.isArray(data.productos)  ? data.productos  : [];
+  const offers   = Array.isArray(data.ofertas)    ? data.ofertas    : [];
   const ads      = Array.isArray(data.publicidad) ? data.publicidad : [];
 
   state.config = data.config || {};
@@ -1513,6 +1518,15 @@ async function loadAllData() {
       lista_3: parseD9Number(r.lista_3 || 0)
     }
   }));
+  state.offers = offers.map(r=>({
+    oferta_id:String(r.oferta_id||"").trim(),
+    producto_id:String(r.producto_id||"").trim(),
+    precio_oferta:parseD9Number(r.precio_oferta||0),
+    fecha_desde:String(r.fecha_desde||"").slice(0,10),
+    fecha_hasta:String(r.fecha_hasta||"").slice(0,10),
+    activo:isTrue(r.activo),
+    titulo:String(r.titulo||"").trim()
+  })).filter(r=>r.producto_id&&r.precio_oferta>0);
 
   state.ads = ads.filter(isActiveAd);
   state.hasLoadedData = true;
@@ -1526,6 +1540,7 @@ function showView(name, pushHistory = true) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const target = document.getElementById(`view-${name}`);
   if (target) target.classList.add("active");
+  if (name === "order") renderOrderPriceListControls();
   if (name === "home" || name === "pending") schedulePendingHomeRefreshD9();
   window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -2450,6 +2465,20 @@ function productPrice(product) {
   return parseD9Number(product?.precio || product?.price || product?.precio_unitario || 0);
 }
 
+const OFFERS_CATEGORY_D9 = "__d9_ofertas__";
+function activeOfferD9(productId){
+  const today=new Date().toLocaleDateString("en-CA",{timeZone:"America/Argentina/Buenos_Aires"});
+  return state.offers.find(o=>o.activo&&String(o.producto_id)===String(productId)&&(!o.fecha_desde||o.fecha_desde<=today)&&(!o.fecha_hasta||o.fecha_hasta>=today))||null;
+}
+function itemCatalogD9(item){const id=String(item?.id||item?.id_producto||"");return state.products.find(p=>String(p.id)===id)||item}
+function setItemOfferPriceD9(item,useOffer){
+  const product=itemCatalogD9(item),offer=activeOfferD9(product?.id||item?.id),normal=productPrice(product);
+  item.precio_lista=normal;
+  if(useOffer&&offer){item.usa_oferta=true;item.oferta_id=offer.oferta_id;item.precio_oferta=offer.precio_oferta;item.precio=offer.precio_oferta;return item}
+  item.usa_oferta=false;item.oferta_id="";item.precio_oferta=offer?.precio_oferta||0;if(!item.precio_manual)item.precio=normal;return item;
+}
+function toggleCartOfferD9(id){const item=state.cart.find(x=>String(x.id)===String(id));if(!item||!activeOfferD9(id))return;delete item.precio_manual;setItemOfferPriceD9(item,!item.usa_oferta);renderProducts();renderCart()}
+
 function renderQuickLabels() {
   const isClient = state.seller?.rol === "cliente";
   const guestMode = !state.seller;
@@ -2458,7 +2487,7 @@ function renderQuickLabels() {
     : (state.selectedClient
         ? (state.selectedClient.ocasional ? (state.selectedClient.nombre_real || "Cliente nuevo / ocasional") : state.selectedClient.nombre)
         : (guestMode ? "Cliente nuevo / ocasional" : "Seleccionar cliente"));
-  $("#selectedCategoryLabel").textContent = state.selectedCategory ? cleanCategory(state.selectedCategory) : "Todas las categorías";
+  $("#selectedCategoryLabel").textContent = state.selectedCategory ? (state.selectedCategory===OFFERS_CATEGORY_D9?"🔥 Productos en oferta":cleanCategory(state.selectedCategory)) : "Todas las categorías";
   $("#selectedProductsLabel").textContent = state.cart.length ? `${state.cart.length} productos seleccionados` : "Seleccionar productos";
   const clientBtn = $("#btnOpenClients");
   if (clientBtn) {
@@ -3346,8 +3375,9 @@ async function sharePriceListPdfD9() {
 
 function refreshPricesAcrossApp() {
   state.cart = state.cart.map(item => {
-    const next = { ...item, precio: productPrice(item) };
+    const next = { ...item };
     delete next.precio_manual;
+    setItemOfferPriceD9(next,!!next.usa_oferta);
     return next;
   });
   renderQuickLabels();
@@ -3359,12 +3389,13 @@ function refreshPricesAcrossApp() {
 }
 
 function categoriesList() {
-  return [...new Set(
+  const regular=[...new Set(
     state.products
       .filter(productHasValidPrice)
       .map(p => p.categoria)
       .filter(Boolean)
   )].sort((a, b) => cleanCategory(a).localeCompare(cleanCategory(b), "es", { sensitivity: "base", numeric: true }));
+  return state.products.some(p=>activeOfferD9(p.id))?[OFFERS_CATEGORY_D9,...regular]:regular;
 }
 
 function renderCategories() {
@@ -3378,7 +3409,7 @@ function renderCategories() {
     </button>`;
   list.innerHTML = allItem + cats.map(c => `
     <button class="option-item option-button ${activeCategory === c ? "is-selected" : ""}" data-category="${esc(c)}" type="button">
-      <strong>${esc(cleanCategory(c))}</strong>
+      <strong>${c===OFFERS_CATEGORY_D9?"🔥 Productos en oferta":esc(cleanCategory(c))}</strong>
     </button>`).join("");
 }
 
@@ -3428,7 +3459,7 @@ function renderProducts() {
   } else if (cat) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => p.categoria === cat)
+      .filter(p => cat===OFFERS_CATEGORY_D9?!!activeOfferD9(p.id):p.categoria === cat)
       .sort(sortByName)
       .slice(0, 500);
   } else if (isSimpleSellerD9() && pickerMode === "order") {
@@ -3471,7 +3502,8 @@ function renderProducts() {
       const cartItem = activeCart.find(x => String(x.id) === String(p.id));
       const selected = !!cartItem;
       const cantidad = Number(cartItem?.cantidad || 1);
-      const precio = Number(cartItem?.precio ?? productPrice(p) ?? 0);
+      const offer=activeOfferD9(p.id);
+      const precio = Number(cartItem?.precio ?? (cat===OFFERS_CATEGORY_D9&&offer?offer.precio_oferta:productPrice(p)) ?? 0);
       const subtotal = cantidad * precio;
       const qtyText = pickerMode === "mostrador" ? mostradorQtyTextD9(cantidad) : String(cantidad);
       return `
@@ -3479,6 +3511,7 @@ function renderProducts() {
           <div class="product-copy product-main-d9" ${selected ? 'data-no-toggle="true"' : ''}>
             <strong>${esc(p.nombre)}</strong>
             <div class="option-meta">${esc(productMetaLine(p))}</div>
+            ${offer?`<div class="option-meta offer-meta-d9">🔥 ${money(offer.precio_oferta)} <del>${money(productPrice(p))}</del></div>`:""}
             ${term && cat && p.categoria !== cat ? `<div class="option-meta product-cross-category-d9">Cat. ${esc(cleanCategory(p.categoria))}</div>` : ""}
             ${!term && !cat && isSimpleSellerD9() ? '<div class="option-meta simple-recent-d9">Usado recientemente</div>' : ''}
           </div>
@@ -3511,7 +3544,7 @@ function toggleProduct(id) {
     } else {
       const p = state.products.find(x => String(x.id) === String(id));
       if (!p) return;
-      state.mostradorCart.push({ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 });
+      const item={ id: p.id, nombre: p.nombre, precio: productPrice(p), cantidad: 1 };setItemOfferPriceD9(item,(state.mostradorCategory===OFFERS_CATEGORY_D9));state.mostradorCart.push(item);
     }
     renderProducts();
     renderMostradorD9();
@@ -3523,7 +3556,7 @@ function toggleProduct(id) {
   } else {
     const p = state.products.find(x => x.id === id);
     if (!p) return;
-    state.cart.push({ ...p, precio: productPrice(p), cantidad: 1 });
+    const item={ ...p, precio: productPrice(p), cantidad: 1 };setItemOfferPriceD9(item,state.selectedCategory===OFFERS_CATEGORY_D9);state.cart.push(item);
   }
   renderProducts();
   renderQuickLabels();
@@ -3544,7 +3577,7 @@ function updateQty(id, delta) {
   const item = state.cart.find(x => x.id === id);
   if (!item) return;
   item.cantidad += delta;
-  if (!item.precio_manual) item.precio = productPrice(item);
+  if (!item.precio_manual) setItemOfferPriceD9(item,!!item.usa_oferta);
   if (item.cantidad <= 0) state.cart = state.cart.filter(x => x.id !== id);
   renderProducts();
   renderQuickLabels();
@@ -3796,6 +3829,7 @@ function renderCart() {
           <div>
             <strong>${esc(item.nombre)}</strong>
             <div class="mini-text">${esc(itemMetaLine(item))}</div>
+            ${activeOfferD9(item.id)?`<button class="qty-edit-btn-d9 offer-toggle-d9 ${item.usa_oferta?'has-offer-d9':''}" data-toggle-offer-d9="${esc(item.id)}" type="button">${item.usa_oferta?`🔥 Oferta aplicada ${money(item.precio)}`:`Usar oferta ${money(activeOfferD9(item.id).precio_oferta)}`}</button>`:""}
           </div>
           <button class="remove-btn cart-trash-btn-d9" data-remove-id="${esc(item.id)}" type="button" title="Quitar producto" aria-label="Quitar producto">🗑️</button>
         </div>
@@ -4049,6 +4083,9 @@ function buildOrderPayload() {
       cantidad: x.cantidad,
       precio: x.precio,
       precio_manual: x.precio_manual === true,
+      usa_oferta: x.usa_oferta === true,
+      oferta_id: x.oferta_id || "",
+      precio_lista: x.precio_lista || productPrice(x),
       nota_item: getItemNoteD9(x)
     })),
     total: cartTotal(),
@@ -4084,6 +4121,9 @@ function buildWebhookPayload(payload) {
       cantidad: Number(item.cantidad || 0),
       precio: Number(item.precio || 0),
       precio_manual: item.precio_manual === true,
+      usa_oferta: item.usa_oferta === true,
+      oferta_id: item.oferta_id || "",
+      precio_lista: Number(item.precio_lista || 0),
       nota_item: getItemNoteD9(item)
     })),
     total: Number(payload?.total || 0),
@@ -4486,6 +4526,9 @@ function saveHistory(payload, status = "enviado", error = "") {
       cantidad: x.cantidad,
       precio: x.precio,
       precio_manual: x.precio_manual === true,
+      usa_oferta: x.usa_oferta === true,
+      oferta_id: x.oferta_id || "",
+      precio_lista: Number(x.precio_lista || 0),
       nota_item: getItemNoteD9(x),
       subtotal: Number(x.precio || 0) * Number(x.cantidad || 0)
     })),
@@ -5340,15 +5383,18 @@ function continueDraftD9(draftId) {
   state.cart = (draft.carrito || []).map(saved => {
     const product = state.products.find(p => String(p.id) === String(saved.id));
     const base = product || saved;
-    return {
+    const restored={
       id: saved.id,
       nombre: product?.nombre || saved.nombre,
       cantidad: Number(saved.cantidad || 1),
       precio: saved.precio_manual ? Number(saved.precio || 0) : (product ? productPrice(product) : Number(saved.precio || 0)),
       precio_manual: saved.precio_manual === true,
+      usa_oferta: saved.usa_oferta === true,
+      oferta_id: saved.oferta_id || "",
+      precio_lista: Number(saved.precio_lista || 0),
       categoria: base.categoria || saved.categoria || "",
       nota_item: getItemNoteD9(saved)
-    };
+    };if(!restored.precio_manual)setItemOfferPriceD9(restored,restored.usa_oferta);return restored;
   });
 
   // Se borra al continuar para evitar que quede duplicado como borrador viejo.
@@ -5567,7 +5613,7 @@ function reuseHistoryItem(id) {
     nombre: x.nombre,
     cantidad: Number(x.cantidad || 1),
     precio: Number(x.precio || 0),
-    nota_item: getItemNoteD9(x)
+    nota_item: getItemNoteD9(x),usa_oferta:x.usa_oferta===true,oferta_id:x.oferta_id||"",precio_lista:Number(x.precio_lista||0)
   }));
 
   logAppEventD9("PEDIDO_REUTILIZADO", { pedido_id: getHistoryPedidoIdD9(item), cliente: item.cliente, total: item.total, resultado: "ok", detalle: `items:${(item.items || []).length}` });
@@ -6027,6 +6073,9 @@ function bind() {
 
     const editPriceD9 = ev.target.closest("[data-edit-price-d9]");
     if (editPriceD9) { ev.stopPropagation(); editItemPriceD9(editPriceD9.dataset.editPriceD9); return; }
+
+    const toggleOfferD9 = ev.target.closest("[data-toggle-offer-d9]");
+    if (toggleOfferD9) { ev.stopPropagation(); toggleCartOfferD9(toggleOfferD9.dataset.toggleOfferD9); return; }
 
     const remove = ev.target.closest("[data-remove-id]");
     if (remove) removeItem(remove.dataset.removeId);
@@ -6798,6 +6847,7 @@ function renderAll() {
   renderCategories();
   renderClients();
   renderSelectedClient();
+  renderOrderPriceListControls();
   renderProducts();
   renderCart();
   renderPriceListControls();

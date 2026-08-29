@@ -19,6 +19,21 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - `manifest.json`: configuración PWA.
 - `MODO_SIMPLE_Y_LISTAS.md`: activación en la Sheet y prueba segura en desarrollo.
 
+## v1.5.18-dev - productos en oferta
+
+- Incorpora la categoría virtual `🔥 Productos en oferta`.
+- El precio normal de `lista_1/2/3` permanece intacto.
+- Al agregar desde esa categoría aplica la oferta; desde otra categoría puede activarse en la línea del pedido.
+- La oferta puede quitarse y volver al precio de la lista asignada al cliente.
+- Guarda en el payload el precio de lista, `oferta_id` y si se usó la oferta; el Worker actual tolera esos campos sin cambios.
+
+## v1.5.17-dev - selector de lista visible desde el primer ingreso
+
+- Corrige la inicialización del selector `Lista para este pedido`.
+- Ahora aparece al entrar por primera vez a `Generar pedido`, sin tener que visitar antes `Lista de precios`.
+- También se actualiza cada vez que se vuelve a abrir la pantalla del pedido.
+- Conserva el modo simple y las listas por cliente incorporadas en v1.5.16-dev.
+
 ## v1.5.16-dev - selector de modo y listas por cliente
 
 - Agrega un botón `Modo normal / Modo simple` dentro de Ingreso de usuario.
