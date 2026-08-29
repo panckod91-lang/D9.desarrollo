@@ -2,7 +2,7 @@ const WEBHOOK_ENDPOINTS = [
   "https://d9-pedidos-prod-worker.pancko-d9.workers.dev/"
 ];
 const BOOTSTRAP_URL = "https://script.google.com/macros/s/AKfycbwg8YQ7lqtLFbxnmtHnM3TxHaCaVoHQ_7AJHKPhiQRyrX6OyqO004F2pSABjI5df3yI/exec?action=bootstrap";
-const APP_VERSION = "v1.5.18-dev (productos en oferta)";
+const APP_VERSION = "v1.5.19-dev (pedido compacto y filtro por marca)";
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 let lastAutoRefreshAtD9 = 0;
@@ -52,10 +52,12 @@ const state = {
   selectedClient: null,
   guestClientDraft: null,
   selectedCategory: "",
+  selectedBrand: "",
   cart: [],
   orderNoteGeneral: "",
   mostradorClient: null,
   mostradorCategory: "",
+  mostradorBrand: "",
   clientPickerMode: "order",
   categoryPickerMode: "order",
   currentView: "home",
@@ -1193,6 +1195,7 @@ function snapshotOrderDraftD9() {
     selectedClient: state.selectedClient,
     guestClientDraft: state.guestClientDraft,
     selectedCategory: state.selectedCategory,
+    selectedBrand: state.selectedBrand,
     cart: Array.isArray(state.cart) ? state.cart.slice() : [],
     activePriceList: state.activePriceList,
     manualPriceOverride: state.manualPriceOverride,
@@ -1205,6 +1208,7 @@ function restoreOrderDraftD9(snap) {
   state.selectedClient = snap.selectedClient;
   state.guestClientDraft = snap.guestClientDraft;
   state.selectedCategory = snap.selectedCategory;
+  state.selectedBrand = snap.selectedBrand || "";
   state.cart = Array.isArray(snap.cart) ? snap.cart.slice() : [];
   state.activePriceList = snap.activePriceList;
   state.manualPriceOverride = snap.manualPriceOverride;
@@ -2478,6 +2482,8 @@ function setItemOfferPriceD9(item,useOffer){
   item.usa_oferta=false;item.oferta_id="";item.precio_oferta=offer?.precio_oferta||0;if(!item.precio_manual)item.precio=normal;return item;
 }
 function toggleCartOfferD9(id){const item=state.cart.find(x=>String(x.id)===String(id));if(!item||!activeOfferD9(id))return;delete item.precio_manual;setItemOfferPriceD9(item,!item.usa_oferta);renderProducts();renderCart()}
+function activeProductBrandD9(){return state.productPickerMode==="mostrador"?state.mostradorBrand:state.selectedBrand}
+function productCategoryLabelD9(category){return category===OFFERS_CATEGORY_D9?"🔥 Ofertas":category?cleanCategory(category):"Todas"}
 
 function renderQuickLabels() {
   const isClient = state.seller?.rol === "cliente";
@@ -2487,7 +2493,6 @@ function renderQuickLabels() {
     : (state.selectedClient
         ? (state.selectedClient.ocasional ? (state.selectedClient.nombre_real || "Cliente nuevo / ocasional") : state.selectedClient.nombre)
         : (guestMode ? "Cliente nuevo / ocasional" : "Seleccionar cliente"));
-  $("#selectedCategoryLabel").textContent = state.selectedCategory ? (state.selectedCategory===OFFERS_CATEGORY_D9?"🔥 Productos en oferta":cleanCategory(state.selectedCategory)) : "Todas las categorías";
   $("#selectedProductsLabel").textContent = state.cart.length ? `${state.cart.length} productos seleccionados` : "Seleccionar productos";
   const clientBtn = $("#btnOpenClients");
   if (clientBtn) {
@@ -2512,14 +2517,11 @@ function renderQuickLabels() {
   const productHint = $("#productModalHint");
   if (productHint) {
     const activeProductCategory = state.productPickerMode === "mostrador" ? state.mostradorCategory : state.selectedCategory;
-    const catLabel = activeProductCategory ? cleanCategory(activeProductCategory) : "Todas las categorías";
+    const brand=activeProductBrandD9(),catLabel=productCategoryLabelD9(activeProductCategory),brandLabel=brand||"Todas";
     productHint.innerHTML = `
-      <div class="modal-category-box-d9">
-        <div class="modal-category-current-d9">
-          <span>Cat.</span>
-          <strong>${esc(catLabel)}</strong>
-        </div>
-        <button id="btnCategoryInsideProductModal" class="modal-category-button-d9" type="button">Cambiar categoría</button>
+      <div class="product-filter-bar-d9">
+        <button id="btnCategoryInsideProductModal" class="product-filter-btn-d9" type="button"><span>Categoría</span><strong>${esc(catLabel)}</strong></button>
+        <button id="btnBrandInsideProductModal" class="product-filter-btn-d9" type="button"><span>Marca</span><strong>${esc(brandLabel)}</strong></button>
       </div>
     `;
   }
@@ -2658,11 +2660,14 @@ function renderOrderPriceListControls() {
     const defaultList = normalizePriceListKeyD9(state.selectedClient?.lista_precio || state.selectedClient?.lista_1 || "lista_1");
     const currentList = state.activePriceList || defaultList;
     const override = !!state.selectedClient && currentList !== defaultList;
+    box.classList.toggle("is-overridden",override);
     info.textContent = override
       ? `Lista cambiada para ${clientName}: ${priceLabel(currentList)} (por defecto ${priceLabel(defaultList)}).`
       : `Precio activo para ${clientName}: ${priceLabel(currentList)}.`;
+    select.title=info.textContent;
   } else {
     box.classList.add("hidden");
+    box.classList.remove("is-overridden");
     info.textContent = "";
   }
 }
@@ -3413,6 +3418,14 @@ function renderCategories() {
     </button>`).join("");
 }
 
+function productBrandsListD9(){
+  const cat=state.productPickerMode==="mostrador"?state.mostradorCategory:state.selectedCategory,map=new Map();
+  state.products.filter(productHasValidPrice).filter(p=>!cat||(cat===OFFERS_CATEGORY_D9?!!activeOfferD9(p.id):p.categoria===cat)).forEach(p=>{const brand=productBrandD9(p);if(brand&&!map.has(normalizeSearchTextD9(brand)))map.set(normalizeSearchTextD9(brand),brand)});
+  return [...map.values()].sort((a,b)=>a.localeCompare(b,"es",{sensitivity:"base",numeric:true}));
+}
+function renderBrandsD9(){const list=$("#brandList");if(!list)return;const active=activeProductBrandD9();list.innerHTML=`<button class="option-item option-button ${!active?"is-selected":""}" data-product-brand="" type="button"><strong>Todas las marcas</strong></button>`+productBrandsListD9().map(brand=>`<button class="option-item option-button ${active===brand?"is-selected":""}" data-product-brand="${esc(brand)}" type="button"><strong>${esc(brand)}</strong></button>`).join("")}
+function selectProductBrandD9(brand){if(state.productPickerMode==="mostrador")state.mostradorBrand=brand;else state.selectedBrand=brand;clearProductSearchD9(false);renderBrandsD9();renderProducts();renderQuickLabels();closeModal("brand")}
+
 function clearProductSearchD9(shouldRender = true) {
   const input = $("#productSearch");
   if (!input) return;
@@ -3425,6 +3438,7 @@ function clearProductSearchD9(shouldRender = true) {
 function selectCategory(category) {
   if (state.categoryPickerMode === "mostrador") {
     state.mostradorCategory = category;
+    if(state.mostradorBrand&&!productBrandsListD9().includes(state.mostradorBrand))state.mostradorBrand="";
     clearProductSearchD9(false);
     renderCategories();
     renderProducts();
@@ -3433,6 +3447,7 @@ function selectCategory(category) {
     return;
   }
   state.selectedCategory = category;
+  if(state.selectedBrand&&!productBrandsListD9().includes(state.selectedBrand))state.selectedBrand="";
   clearProductSearchD9(false);
   renderCategories();
   renderProducts();
@@ -3445,6 +3460,7 @@ function renderProducts() {
   const term = normalizeSearchTextD9($("#productSearch").value);
   const pickerMode = state.productPickerMode === "mostrador" ? "mostrador" : "order";
   const cat = pickerMode === "mostrador" ? state.mostradorCategory : state.selectedCategory;
+  const brand = pickerMode === "mostrador" ? state.mostradorBrand : state.selectedBrand;
   const list = $("#productList");
   const activeCart = pickerMode === "mostrador" ? state.mostradorCart : state.cart;
 
@@ -3454,12 +3470,13 @@ function renderProducts() {
     filtered = state.products
       .filter(productHasValidPrice)
       .filter(p => productMatchesTerm(p, term))
+      .filter(p => (!cat||(cat===OFFERS_CATEGORY_D9?!!activeOfferD9(p.id):p.categoria===cat))&&(!brand||productBrandD9(p)===brand))
       .sort(sortByName)
       .slice(0, 500);
-  } else if (cat) {
+  } else if (cat||brand) {
     filtered = state.products
       .filter(productHasValidPrice)
-      .filter(p => cat===OFFERS_CATEGORY_D9?!!activeOfferD9(p.id):p.categoria === cat)
+      .filter(p => (!cat||(cat===OFFERS_CATEGORY_D9?!!activeOfferD9(p.id):p.categoria===cat))&&(!brand||productBrandD9(p)===brand))
       .sort(sortByName)
       .slice(0, 500);
   } else if (isSimpleSellerD9() && pickerMode === "order") {
@@ -5896,6 +5913,8 @@ function bind() {
       openModal("category");
       return;
     }
+    const insideBrandBtn=e.target.closest("#btnBrandInsideProductModal");
+    if(insideBrandBtn){e.preventDefault();e.stopPropagation();renderBrandsD9();const modal=document.getElementById("brandModal");if(modal){modal.classList.add("front-modal-d9");modal.style.zIndex="999999"}openModal("brand");return}
   });
 
   $("#btnGoOrder").addEventListener("click", () => {
@@ -5975,16 +5994,6 @@ function bind() {
     renderClients();
     openModal("client");
   });
-  $("#btnOpenCategories").addEventListener("click", () => {
-    state.categoryPickerMode = "order";
-    if (!state.selectedClient && !state.seller?.rol) {
-      toast("Primero cargá los datos del comprador.");
-      openOccasionalClientModal();
-      return;
-    }
-    renderCategories();
-    openModal("category");
-  });
   $("#btnOpenProducts").addEventListener("click", () => {
     state.productPickerMode = "order";
     state.categoryPickerMode = "order";
@@ -6001,6 +6010,7 @@ function bind() {
       return;
     }
     state.productPickerMode = "order";
+    renderQuickLabels();
     renderProducts();
     openModal("product");
   });
@@ -6021,6 +6031,7 @@ function bind() {
     if (ev.target.closest("#btnMostradorOpenProducts")) {
       state.productPickerMode = "mostrador";
       state.categoryPickerMode = "mostrador";
+      renderQuickLabels();
       renderProducts();
       openModal("product");
       return;
@@ -6058,6 +6069,9 @@ function bind() {
 
     const cat = ev.target.closest("[data-category]");
     if (cat) selectCategory(cat.dataset.category);
+
+    const productBrand = ev.target.closest("[data-product-brand]");
+    if (productBrand) { selectProductBrandD9(productBrand.dataset.productBrand || ""); return; }
 
     const toggle = ev.target.closest("[data-toggle-product]");
     if (toggle && !ev.target.closest("[data-no-toggle]")) toggleProduct(toggle.dataset.toggleProduct);

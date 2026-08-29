@@ -19,6 +19,13 @@ PWA liviana para toma de pedidos comerciales con funcionamiento online/offline, 
 - `manifest.json`: configuración PWA.
 - `MODO_SIMPLE_Y_LISTAS.md`: activación en la Sheet y prueba segura en desarrollo.
 
+## v1.5.19-dev - pantalla de pedido compacta
+
+- Elimina el selector de categoría repetido de la pantalla principal.
+- Dentro de Productos incorpora filtros compactos y combinables de Categoría y Marca.
+- Mantiene `🔥 Productos en oferta` como categoría especial y permite combinarla con una marca.
+- Reduce el selector de lista a una franja discreta; si se cambia manualmente queda resaltada suavemente.
+
 ## v1.5.18-dev - productos en oferta
 
 - Incorpora la categoría virtual `🔥 Productos en oferta`.
